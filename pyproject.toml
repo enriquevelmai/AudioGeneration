@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "podcast-tts"
+version = "0.1.0"
+description = "Generador local de podcasts a partir de guiones Markdown con F5-TTS y XTTS v2"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    # torch 2.8: ultima version cuyo torchaudio.load/save usa soundfile; desde 2.9 exige torchcodec,
+    # que en Windows necesita las DLL compartidas de FFmpeg (el ffmpeg de chocolatey es estatico).
+    "torch==2.8.*",
+    "torchaudio==2.8.*",
+    "f5-tts",
+    "coqui-tts>=0.27,<0.28",
+    # coqui-tts 0.27.x importa transformers.pytorch_utils.isin_mps_friendly, eliminado en transformers 5
+    "transformers>=4.57,<5",
+    "gradio",
+    "pydub",
+    "soundfile",
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/podcast_tts"]
+
+# torch/torchaudio con CUDA 12.6 (RTX 4080 SUPER, driver 610.88)
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+torchaudio = { index = "pytorch-cu126" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.uv]
+# El proyecto solo se usa en Windows x64; resolver solo para esa plataforma evita
+# que el lockfile universal elija versiones antiguas (p.ej. datasets 2.14).
+environments = ["sys_platform == 'win32'"]
+# Sin esto el resolvedor del lock retrocede a datasets 2.14 (2023), incompatible con fsspec moderno.
+constraint-dependencies = ["datasets>=4"]
