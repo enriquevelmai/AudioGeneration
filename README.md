@@ -11,7 +11,48 @@ voces clonadas a partir de clips cortos, todo en tu ordenador (GPU NVIDIA).
 
 ## Instalación
 
-TODO
+Requisitos:
+
+- Windows 10/11 x64 con GPU NVIDIA (probado en RTX 4080 SUPER 16 GB; ~5 GB de VRAM
+  con los tres modelos cargados). Funciona en CPU, pero muy lento.
+- Python 3.11 y [uv](https://docs.astral.sh/uv/).
+- `ffmpeg` en el `PATH` (p.ej. `choco install ffmpeg`), para leer/escribir MP3.
+- ~6 GB de disco para los modelos.
+
+```powershell
+# Instalación reproducible (crea .venv con uv, instala uv.lock y verifica el entorno)
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+# Igual, y además descarga los modelos y genera audios de prueba en outputpowershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Smoke
+# Rehacer el entorno desde cero
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Recreate
+```
+
+Equivalente manual:
+
+```powershell
+uv venv --python 3.11 .venv
+uv sync --extra dev                       # torch 2.8 + CUDA 12.6, f5-tts, coqui-tts...
+.venv\Scripts\python.exe scripts\check_env.py
+$env:PYTHONUTF8 = "1"                      # evita UnicodeEncodeError en la consola de Windows
+.venv\Scripts\python.exe scripts\make_sample_voices.py   # (re)genera las voces de ejemplo si faltan
+```
+
+Los modelos se descargan solos la primera vez que se usan:
+
+| Modelo | Uso | Caché | Tamaño |
+|---|---|---|---|
+| F5-TTS `F5TTS_v1_Base` + vocoder Vocos | F5, inglés | `%USERPROFILE%\.cache\huggingface\hub` (`HF_HOME`) | ~1.4 GB |
+| `jpgallegoar/F5-Spanish` | F5, castellano | `%USERPROFILE%\.cache\huggingface\hub` (`HF_HOME`) | ~1.3 GB |
+| XTTS v2 (Coqui) | XTTS, 17 idiomas | `%LOCALAPPDATA%	ts` (`TTS_HOME`) | ~1.8 GB |
+| Whisper large-v3-turbo | solo si una voz F5 no tiene `ref.txt` | `%USERPROFILE%\.cache\huggingface\hub` | ~1.6 GB |
+
+> **Licencias (uso no comercial).** XTTS v2 se distribuye bajo la *Coqui Public Model
+> License* (CPML) y el finetune `jpgallegoar/F5-Spanish` bajo CC-BY-NC-4.0: ninguno
+> permite uso comercial. Al usar XTTS el programa acepta la CPML automáticamente
+> (`COQUI_TOS_AGREED=1`). El modelo base de F5-TTS es CC-BY-NC-4.0 también.
+
+Detalles de versiones, pins y problemas conocidos: [`docs/ENGINES.md`](docs/ENGINES.md).
+
 
 ## Estructura
 
@@ -91,6 +132,44 @@ Cada voz vive en `voices/<nombre>/`:
 - `ref.wav`: clip de referencia de 5-15 s (se convierte a mono 24 kHz 16 bit).
 - `ref.txt`: transcripción exacta del clip (imprescindible para F5-TTS).
 - `voice.json`: `{name, lang, engine, description, xtts_speaker, speed}`.
+
+Voces de ejemplo incluidas (generadas con `scripts/make_sample_voices.py` a partir de
+speakers integrados de XTTS):
+
+| Voz | Idioma | Motor | Origen |
+|---|---|---|---|
+| `ana` | es | f5 | clip de "Alma María" |
+| `carlos` | es | f5 | clip de "Luis Moray" |
+| `emma` | en | f5 | clip de "Claribel Dervla" |
+| `david` | en | xtts | speaker integrado "Damien Black" (su `ref.wav` también vale para F5) |
+
+### Añadir tu propia voz
+
+```powershell
+python -m podcast_tts voices add maria C:\grabaciones\maria.m4a `
+    --text "Transcripción exacta, palabra por palabra, de lo que se oye en el clip." `
+    --lang es --engine f5
+```
+
+Requisitos del clip:
+
+- **5-15 s** (ideal 8-10 s; F5-TTS recorta a ~12 s y XTTS usa hasta ~15 s).
+- **Limpio**: una sola persona, sin música, sin eco ni ruido de fondo, sin cortes a mitad de palabra.
+- **Con transcripción exacta** (`--text`): F5-TTS la necesita para alinear. Si falta,
+  se transcribe automáticamente con Whisper (descarga ~1.6 GB y es menos fiable).
+- Cualquier formato que lea ffmpeg (wav, mp3, m4a...); se convierte solo.
+- Graba en el idioma en que vaya a hablar la voz: F5 admite `es` y `en`; para otros
+  idiomas usa `--engine xtts`.
+
+### Speakers integrados de XTTS
+
+XTTS v2 trae 58 voces listas para usar, sin clip (ver `podcast_tts.voices.XTTS_BUILTIN_SPEAKERS`
+o `list_xtts_speakers()`). Algunas: "Claribel Dervla", "Ana Florence", "Alma María",
+"Damien Black", "Luis Moray", "Marcos Rudaski". Hablan cualquiera de los 17 idiomas de XTTS:
+
+```powershell
+python -m podcast_tts voices add narrador --engine xtts --xtts-speaker "Marcos Rudaski" --lang es
+```
 
 ## Uso (CLI)
 

@@ -1,0 +1,8 @@
+{
+  "name": "ana",
+  "lang": "es",
+  "engine": "f5",
+  "description": "Mujer, castellano. Clip generado con el speaker XTTS 'Alma María'.",
+  "xtts_speaker": null,
+  "speed": 1.0
+}

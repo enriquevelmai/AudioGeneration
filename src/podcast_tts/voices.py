@@ -29,10 +29,12 @@ __all__ = [
     "Voice",
     "VoiceError",
     "VoiceNotFoundError",
+    "XTTS_BUILTIN_SPEAKERS",
     "add_voice",
     "default_voices_dir",
     "get_voice",
     "list_voices",
+    "list_xtts_speakers",
     "remove_voice",
 ]
 
@@ -42,6 +44,68 @@ MIN_REF_SECONDS = 3.0
 VOICE_ENGINES = ("f5", "xtts", "dummy")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]*$")
+
+# Speakers integrados de XTTS v2 (58, en el orden de ``TTS(...).speakers``; ver docs/ENGINES.md).
+XTTS_BUILTIN_SPEAKERS: tuple[str, ...] = (
+    "Claribel Dervla",
+    "Daisy Studious",
+    "Gracie Wise",
+    "Tammie Ema",
+    "Alison Dietlinde",
+    "Ana Florence",
+    "Annmarie Nele",
+    "Asya Anara",
+    "Brenda Stern",
+    "Gitta Nikolina",
+    "Henriette Usha",
+    "Sofia Hellen",
+    "Tammy Grit",
+    "Tanja Adelina",
+    "Vjollca Johnnie",
+    "Andrew Chipper",
+    "Badr Odhiambo",
+    "Dionisio Schuyler",
+    "Royston Min",
+    "Viktor Eka",
+    "Abrahan Mack",
+    "Adde Michal",
+    "Baldur Sanjin",
+    "Craig Gutsy",
+    "Damien Black",
+    "Gilberto Mathias",
+    "Ilkin Urbano",
+    "Kazuhiko Atallah",
+    "Ludvig Milivoj",
+    "Suad Qasim",
+    "Torcull Diarmuid",
+    "Viktor Menelaos",
+    "Zacharie Aimilios",
+    "Nova Hogarth",
+    "Maja Ruoho",
+    "Uta Obando",
+    "Lidiya Szekeres",
+    "Chandra MacFarland",
+    "Szofi Granger",
+    "Camilla Holmström",
+    "Lilya Stainthorpe",
+    "Zofija Kendrick",
+    "Narelle Moon",
+    "Barbora MacLean",
+    "Alexandra Hisakawa",
+    "Alma María",
+    "Rosemary Okafor",
+    "Ige Behringer",
+    "Filip Traverse",
+    "Damjan Chapman",
+    "Wulf Carlevaro",
+    "Aaron Dreschner",
+    "Kumar Dahl",
+    "Eugenio Mataracı",
+    "Ferran Simen",
+    "Xavier Hayasaka",
+    "Luis Moray",
+    "Marcos Rudaski",
+)
 
 
 class VoiceError(Exception):
@@ -271,3 +335,8 @@ def remove_voice(name: str, voices_dir: str | Path | None = None) -> None:
     _validate_name(name)
     voice = get_voice(name, voices_dir)
     shutil.rmtree(voice.path)
+
+
+def list_xtts_speakers() -> list[str]:
+    """Nombres de los speakers integrados de XTTS v2 (sin cargar el modelo)."""
+    return list(XTTS_BUILTIN_SPEAKERS)

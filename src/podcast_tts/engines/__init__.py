@@ -8,11 +8,20 @@ para no cargar torch/modelos si no hacen falta. Las instancias se cachean
 from __future__ import annotations
 
 import importlib
+import importlib.util
+import sys
 from typing import Any
 
 from .base import EngineError, TTSEngine
 
-__all__ = ["ENGINE_NAMES", "EngineError", "TTSEngine", "clear_engine_cache", "get_engine"]
+__all__ = [
+    "ENGINE_NAMES",
+    "EngineError",
+    "TTSEngine",
+    "clear_engine_cache",
+    "engine_info",
+    "get_engine",
+]
 
 # nombre -> (módulo, clase)
 _REGISTRY: dict[str, tuple[str, str]] = {
@@ -51,3 +60,57 @@ def get_engine(name: str, **kwargs: Any) -> TTSEngine:
 def clear_engine_cache() -> None:
     """Olvida las instancias cacheadas (libera modelos)."""
     _instances.clear()
+
+
+# nombre -> paquete del que depende (para comprobar disponibilidad sin importarlo)
+_DEPENDENCIES: dict[str, str | None] = {"f5": "f5_tts", "xtts": "TTS", "dummy": None}
+
+
+def _cuda_info() -> tuple[bool, str | None]:
+    try:
+        import torch
+    except ImportError:
+        return False, None
+    try:
+        if torch.cuda.is_available():
+            return True, torch.cuda.get_device_name(0)
+    except Exception:  # driver roto, etc.
+        pass
+    return False, None
+
+
+def engine_info() -> dict[str, dict[str, Any]]:
+    """Disponibilidad de cada motor, sin cargar modelos (pensado para la UI).
+
+    Devuelve ``{nombre: {"importable": bool, "cuda": bool, "device": str | None,
+    "loaded": bool, "error": str | None}}``. Solo comprueba que el paquete del
+    motor está instalado (``find_spec``), no lo importa; sí importa ``torch``
+    para saber si hay GPU.
+    """
+    cuda, device = _cuda_info()
+    info: dict[str, dict[str, Any]] = {}
+    for name, package in _DEPENDENCIES.items():
+        importable, error = True, None
+        if package is not None:
+            try:
+                importable = importlib.util.find_spec(package) is not None
+            except (ImportError, ValueError) as exc:
+                importable, error = False, str(exc)
+            if not importable and error is None:
+                error = f"no está instalado el paquete '{package}'"
+        loaded = False
+        module = sys.modules.get(_REGISTRY[name][0])
+        if name == "f5" and module is not None:
+            loaded = bool(getattr(module, "loaded_models", lambda: [])())
+        elif name == "xtts" and module is not None:
+            loaded = bool(getattr(module, "is_loaded", lambda: False)())
+        elif name == "dummy":
+            loaded = True
+        info[name] = {
+            "importable": importable,
+            "cuda": cuda if name != "dummy" else False,
+            "device": device if name != "dummy" else None,
+            "loaded": loaded,
+            "error": error,
+        }
+    return info

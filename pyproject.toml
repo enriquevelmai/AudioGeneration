@@ -42,6 +42,11 @@ torchaudio = { index = "pytorch-cu126" }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# `pytest` excluye los tests lentos (modelos reales en GPU); `pytest -m slow` los ejecuta.
+addopts = "-m 'not slow'"
+markers = [
+    "slow: sintetiza con los modelos reales (F5-TTS / XTTS v2); requiere GPU y modelos descargados",
+]
 
 [tool.uv]
 # El proyecto solo se usa en Windows x64; resolver solo para esa plataforma evita

@@ -1,0 +1,8 @@
+{
+  "name": "emma",
+  "lang": "en",
+  "engine": "f5",
+  "description": "Woman, English. Clip generated with the XTTS speaker 'Claribel Dervla'.",
+  "xtts_speaker": null,
+  "speed": 1.0
+}

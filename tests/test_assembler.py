@@ -59,14 +59,34 @@ def test_dummy_engine_protocol() -> None:
         get_engine("nope")
 
 
-def test_stub_engines_raise_not_implemented(tmp_path) -> None:
+def test_real_engines_lazy_and_validate_without_loading(tmp_path) -> None:
+    """f5/xtts se instancian sin cargar modelos y validan idioma/voz antes de cargarlos."""
+    from podcast_tts.engines import EngineError, engine_info
+    from podcast_tts.engines import f5 as f5_mod
+    from podcast_tts.engines import xtts as xtts_mod
     from podcast_tts.voices import Voice
 
+    f5_loaded, xtts_loaded = f5_mod.loaded_models(), xtts_mod.is_loaded()
     for name in ("f5", "xtts"):
         eng = get_engine(name)
+        assert eng.name == name
         assert eng.sample_rate == 24000
-        with pytest.raises(NotImplementedError):
-            eng.synthesize("hola", Voice("x", tmp_path), "es")
+    voice = Voice("x", tmp_path)  # sin ref.wav ni xtts_speaker
+    with pytest.raises(EngineError, match="xtts"):
+        get_engine("f5").synthesize("bonjour", voice, "fr")
+    with pytest.raises(EngineError, match="referencia"):
+        get_engine("f5").synthesize("hola", voice, "es")
+    with pytest.raises(EngineError, match="idioma"):
+        get_engine("xtts").synthesize("hola", voice, "xx")
+    with pytest.raises(EngineError):
+        get_engine("xtts").synthesize("hola", voice, "es")
+    assert xtts_mod.normalize_lang("zh") == "zh-cn"
+    # Nada de lo anterior debe haber cargado modelos.
+    assert f5_mod.loaded_models() == f5_loaded
+    assert xtts_mod.is_loaded() == xtts_loaded
+    info = engine_info()
+    assert set(info) >= {"f5", "xtts", "dummy"}
+    assert all({"importable", "cuda", "loaded"} <= set(v) for v in info.values())
 
 
 def test_render_timeline_and_pauses(tmp_path) -> None:

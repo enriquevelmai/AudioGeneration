@@ -1,0 +1,8 @@
+{
+  "name": "david",
+  "lang": "en",
+  "engine": "xtts",
+  "description": "Man, English. XTTS built-in speaker 'Damien Black' (ref.wav also usable with F5).",
+  "xtts_speaker": "Damien Black",
+  "speed": 1.0
+}
