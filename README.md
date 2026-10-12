@@ -116,7 +116,41 @@ Opciones útiles de `generate`: `--voices-dir`, `--max-chars`, `--bitrate 192k`,
 
 ## UI
 
-TODO
+Interfaz web local (Gradio), en castellano:
+
+```powershell
+python -m podcast_tts ui                      # http://127.0.0.1:7860
+python -m podcast_tts ui --port 7861 --inbrowser
+python -m podcast_tts ui --host 0.0.0.0       # accesible desde la red local
+python -m podcast_tts ui --share              # enlace público temporal de Gradio
+```
+
+Arranca en un par de segundos sin cargar ningún modelo: F5-TTS / XTTS se cargan
+en la primera síntesis (la primera generación tarda más). Solo se sintetiza una
+cosa a la vez.
+
+Pestañas:
+
+- **Guion → Podcast**: editor precargado con `examples/ejemplo.md`, motor
+  (*auto (según voz)*, `f5`, `xtts` o `dummy` para probar tiempos sin modelos),
+  nombre del fichero, formato (mp3/wav), bitrate y normalización a -16 LUFS.
+  *Validar* muestra la tabla de segmentos (nº, tipo, voz, idioma, texto, línea) y
+  las voces usadas, avisando si alguna no existe. *Generar* sintetiza en segundo
+  plano con barra de progreso y log; al terminar muestra el reproductor y el
+  enlace de descarga. El resultado se guarda en `output/<nombre>.<formato>`.
+  Los errores del guion se indican con su número de línea. *Cargar guion* abre
+  un `.md`; *Guardar guion* lo guarda en `guiones/<nombre>.md`. Las rutas
+  relativas de música/sfx se buscan en `examples/`, el directorio actual y la
+  raíz del proyecto. Incluye una tabla de ayuda con las etiquetas.
+- **Voces**: tabla de voces (nombre, idioma, motor, descripción, duración del
+  clip, speaker XTTS, velocidad), reproductor del `ref.wav` de la voz
+  seleccionada, *Probar voz* (sintetiza una frase corta en su idioma o la que
+  escribas) y *Eliminar voz* (pide confirmación). En *Añadir voz* subes o grabas
+  con el micrófono un clip de 5-15 s con su transcripción exacta, o eliges un
+  speaker integrado de XTTS en lugar del clip.
+- **Sistema**: estado de CUDA y la GPU, motores disponibles, rutas (voces, caché,
+  salida, guiones) con tamaños, botón *Vaciar caché de síntesis* y la lista de
+  ficheros de `output/` para descargar.
 
 ## Tests
 

@@ -7,6 +7,7 @@ Ejemplos::
     python -m podcast_tts voices list
     python -m podcast_tts voices add ana clip.wav --text "Transcripción del clip" --lang es
     python -m podcast_tts voices remove ana
+    python -m podcast_tts ui [--port 7860] [--host 127.0.0.1] [--share]
 """
 
 from __future__ import annotations
@@ -126,6 +127,12 @@ def _cmd_voices_remove(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_ui(args: argparse.Namespace) -> int:
+    from .ui import run_from_args
+
+    return run_from_args(args)
+
+
 # --------------------------------------------------------------------------- #
 # Argumentos
 # --------------------------------------------------------------------------- #
@@ -189,6 +196,13 @@ def build_parser() -> argparse.ArgumentParser:
     vr = vsub.add_parser("remove", parents=[voices_dir], help="elimina una voz")
     vr.add_argument("name")
     vr.set_defaults(func=_cmd_voices_remove)
+
+    u = sub.add_parser("ui", parents=[voices_dir], help="lanza la interfaz web local (Gradio)")
+    u.add_argument("--port", type=int, default=7860, help="puerto (por defecto 7860)")
+    u.add_argument("--host", default="127.0.0.1", help="interfaz de red (por defecto 127.0.0.1)")
+    u.add_argument("--share", action="store_true", help="crea un enlace público temporal de Gradio")
+    u.add_argument("--inbrowser", action="store_true", help="abre el navegador al arrancar")
+    u.set_defaults(func=_cmd_ui)
     return p
 
 
