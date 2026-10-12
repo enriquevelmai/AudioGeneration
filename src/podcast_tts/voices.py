@@ -261,7 +261,7 @@ def _convert_reference(src: Path, dst: Path, max_seconds: float) -> float:
             stacklevel=3,
         )
     dst.parent.mkdir(parents=True, exist_ok=True)
-    audio.export(str(dst), format="wav")
+    audio.export(str(dst), format="wav").close()
     return duration
 
 

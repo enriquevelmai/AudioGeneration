@@ -54,11 +54,13 @@ Subcomandos:
 2. **Escribir el guion** `.md` (UTF-8) en `C:\Users\enriq\Documents\claude\AudioGeneration\guiones\`
    (créala si no existe) o en el cwd del usuario si lo prefiere. Sigue los consejos de redacción.
 3. **Validar**: `parse guion.md`. Corrige cualquier error (da número de línea) y comprueba que cada
-   segmento `speech` tenga la voz e idioma esperados.
+   segmento `speech` tenga la voz e idioma esperados. `"lang": null` en un segmento significa "sin
+   etiqueta `lang=`": se usará el `lang` del front matter si lo hay y, si no, el de `voice.json`.
 4. **Generar**: `generate guion.md -o <ruta>.mp3` (por defecto en `...\AudioGeneration\output\`).
    Para probar tiempos y mezcla sin GPU: `--engine dummy` (tonos en lugar de voz).
 5. **Reportar** la ruta absoluta del fichero y su duración:
-   `ffprobe -v error -show_entries format=duration -of csv=p=0 salida.mp3`.
+   `ffprobe -v error -show_entries format=duration -of csv=p=0 salida.mp3`
+   (el `Listo: ... (N s)` final del CLI es el tiempo de generación, no la duración del audio).
 
 Al regenerar tras editar el guion, la caché (`.cache/tts`) solo resintetiza las frases cambiadas.
 
@@ -93,6 +95,9 @@ Reglas clave:
 - Prioridades: **idioma** = etiqueta > front matter > `voice.json`; **motor** = `--engine` > etiqueta >
   front matter > `voice.json`; **velocidad** = etiqueta > `voice.json`.
 - Texto antes de cualquier `[voz:]` y sin `default_voice` → error.
+- **Guiones bilingües**: NO pongas `lang` en el front matter (forzaría ese idioma a todas las voces,
+  p.ej. `emma` leería inglés con el modelo castellano). Deja que cada voz use el `lang` de su
+  `voice.json`, o indícalo por tramo: `[voz:ana lang=en]`.
 
 Referencia completa y 3 guiones de ejemplo: `references/formato-guion.md` (léela si el guion usa música,
 varios idiomas o varias secciones).

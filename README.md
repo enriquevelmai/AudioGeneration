@@ -9,6 +9,18 @@ voces clonadas a partir de clips cortos, todo en tu ordenador (GPU NVIDIA).
 - Caché de síntesis: al regenerar solo se sintetizan las frases que han cambiado.
 - CLI en castellano y UI web local (Gradio).
 
+## Inicio rápido
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1          # crea .venv (uv) e instala uv.lock
+.venv\Scripts\python.exe scripts\check_env.py                       # debe terminar en "TODO OK"
+.venv\Scripts\python.exe -m podcast_tts ui                          # UI en http://127.0.0.1:7860
+.venv\Scripts\python.exe -m podcast_tts generate examples\ejemplo.md -o output\episodio.mp3
+# Desde Claude Code: pide "genera un podcast..." y se activa la skill podcast-tts (docs/SKILL.md)
+```
+
+Antes de usar el CLI en una consola nueva: `$env:PYTHONUTF8='1'; $env:COQUI_TOS_AGREED='1'`.
+
 ## Instalación
 
 Requisitos:
@@ -22,7 +34,8 @@ Requisitos:
 ```powershell
 # Instalación reproducible (crea .venv con uv, instala uv.lock y verifica el entorno)
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
-# Igual, y además descarga los modelos y genera audios de prueba en outputpowershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Smoke
+# Igual, y además descarga los modelos y genera audios de prueba en output
+powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Smoke
 # Rehacer el entorno desde cero
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Recreate
 ```
@@ -63,6 +76,7 @@ AudioGeneration/
 │   ├── voices.py          # registro de voces en voices/
 │   ├── assembler.py       # síntesis + mezcla + normalización + exportación
 │   ├── cli.py             # python -m podcast_tts ...
+│   ├── ui.py              # UI Gradio (python -m podcast_tts ui)
 │   └── engines/
 │       ├── base.py        # protocolo TTSEngine
 │       ├── f5.py          # F5-TTS
@@ -70,6 +84,10 @@ AudioGeneration/
 │       └── dummy.py       # motor de pruebas (tonos)
 ├── voices/<nombre>/       # ref.wav + ref.txt + voice.json
 ├── examples/ejemplo.md    # guion de ejemplo
+├── guiones/               # guiones del usuario (ejemplo_dialogo.md: diálogo es/en)
+├── scripts/               # setup.ps1, check_env.py, make_sample_voices.py, smoke_*.py
+├── skill/podcast-tts/     # skill de Claude Code (ver docs/SKILL.md)
+├── docs/                  # ENGINES.md, DECISIONS.md, SKILL.md
 ├── tests/                 # pytest
 ├── output/                # audios generados (ignorado por git)
 └── .cache/tts/            # caché de síntesis (ignorada por git)
@@ -234,5 +252,9 @@ Pestañas:
 ## Tests
 
 ```powershell
-python -m pytest tests
+$env:PYTHONUTF8='1'; $env:COQUI_TOS_AGREED='1'
+.venv\Scripts\python.exe -m pytest           # rápido (~10 s): excluye los tests `slow`, sin cargar modelos
+.venv\Scripts\python.exe -m pytest -m slow   # motores reales F5-TTS / XTTS v2 (GPU y modelos descargados, ~40 s)
 ```
+
+`pytest` a secas aplica `-m 'not slow'` (configurado en `pyproject.toml`).

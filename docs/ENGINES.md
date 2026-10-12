@@ -113,7 +113,13 @@ F5TTS.target_sample_rate                      # 24000
 - Audios de referencia del paquete: `f5_tts/infer/examples/basic/basic_ref_en.wav`
   (texto: "Some call me nature, others call me mother nature.") y `basic_ref_zh.wav`.
 - `ref_text=""` -> transcribe la referencia automáticamente con `openai/whisper-large-v3-turbo`
-  (pipeline de transformers; descarga ~1.6 GB la primera vez; **no probado aquí**). Mejor pasar siempre el texto.
+  (pipeline de transformers; descarga ~1.6 GB la primera vez). Mejor pasar siempre el texto.
+  **Ojo en Windows**: el pipeline ASR de transformers importa **torchcodec** para decodificar el audio
+  cuando se le pasa una ruta, y falla con `WinError 127` (faltan las DLL compartidas de FFmpeg).
+  `src/podcast_tts/engines/f5.py` (`_transcribe_reference`) lo evita: preprocesa el clip con F5
+  (recorte a ~12 s), lo pasa al pipeline como array numpy (`{"raw": ..., "sampling_rate": ...}`) con
+  `is_torchcodec_available` forzado a `False` y cachea la transcripción en memoria por clip
+  (ruta + tamaño + mtime). Si aun así falla, pide escribir la transcripción en `ref.txt`.
 - La referencia se recorta a ~12 s (`preprocess_ref_audio_text`); usar referencias de 5-10 s.
 - El texto largo se trocea internamente en lotes (`infer_process` -> `chunk_text`) y se concatena con crossfade.
 - El modelo base está entrenado en **inglés y chino**: el castellano sale inteligible pero con acento.

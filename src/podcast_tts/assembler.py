@@ -506,7 +506,7 @@ def export_audio(audio: "AudioSegment", path: str | Path, *,  # noqa: F821
         kwargs["bitrate"] = bitrate
     if tags and fmt == "mp3":
         kwargs["tags"] = tags
-    audio.export(str(path), **kwargs)
+    audio.export(str(path), **kwargs).close()  # pydub devuelve el fichero abierto
     return path
 
 
