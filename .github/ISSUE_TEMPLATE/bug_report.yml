@@ -1,0 +1,95 @@
+name: Bug report
+description: Something does not work as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem. Issues can be written in English or Spanish.
+        **Never paste API keys** (ElevenLabs, Azure, OpenAI) or the contents of your `.env` file.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected to happen instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The command you ran or the buttons you clicked, and a minimal script if relevant.
+      placeholder: |
+        1. podcast-tts generate examples\ejemplo.md -o output\test.mp3
+        2. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: how
+    attributes:
+      label: How do you run AudioGeneration?
+      options:
+        - Desktop app (AudioGeneration.exe or bats\run.bat)
+        - Web UI in the browser (bats\run_web.bat or podcast-tts ui)
+        - Command line (podcast-tts ...)
+        - Claude Code skill
+        - Installer / updater (install.bat, update.bat, first run of AudioGeneration.exe)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      multiple: true
+      options:
+        - f5
+        - xtts
+        - elevenlabs
+        - azure
+        - openai
+        - dummy
+        - third-party plugin
+        - not engine related
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `podcast-tts --version`, or the release you downloaded.
+      placeholder: podcast_tts 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 23H2
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+      description: GPU model and driver, or "CPU only".
+      placeholder: NVIDIA RTX 3060 12 GB, driver 580.xx
+
+  - type: textarea
+    id: check-env
+    attributes:
+      label: Output of scripts\check_env.py
+      description: Run `.venv\Scripts\python.exe scripts\check_env.py` in the project folder and paste the output.
+      render: text
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error message or logs
+      description: Full error output. Remove any personal paths or keys you do not want to share.
+      render: text
