@@ -4,8 +4,7 @@ Entorno probado: Windows 11 Pro, RTX 4080 SUPER 16 GB (driver 610.88, CUDA UMD 1
 Python 3.11.9, uv 0.12.5, ffmpeg 7.1 (chocolatey, build estática). También probado en modo CPU
 (extra `cpu`).
 
-Todo está en un único venv (`.venv`): **no hace falta `.venv-xtts`**. F5-TTS y coqui-tts conviven
-con los pins descritos abajo.
+Todo está en un único venv (`.venv`): F5-TTS y coqui-tts conviven con los pins descritos abajo.
 
 ## 1. Instalación
 
@@ -267,12 +266,19 @@ XTTS es estocástico (`do_sample=True`): la duración varía entre ejecuciones.
    (GPT2InferenceModel / `generate`) son inofensivos; ejecutar con `-W ignore` o filtrarlos con `warnings`.
 8. **Ambos modelos en VRAM a la vez**: F5 (~2 GB) + XTTS (~2-3 GB) caben de sobra en 16 GB; se pueden
    mantener cargados simultáneamente en la app.
-9. **Edge-TTS / voces Microsoft**: bloqueadas; no se instalan ni se usan.
+9. **Edge-TTS / voces SAPI**: el proyecto no las usa ni las instala. La opción oficial de Microsoft
+   es el motor `azure` (Azure AI Speech, de pago).
+10. **GPU RTX 50 (Blackwell, sm_120)**: las ruedas cu126 de PyTorch 2.8 no incluyen sm_120. Para estas
+    GPU hay que usar el índice `https://download.pytorch.org/whl/cu128` (cambiar `pytorch-cu126` en
+    `pyproject.toml`, `uv lock --python 3.11` y reinstalar) o, mientras tanto, la variante CPU.
 
 ## 5. Scripts
 
-- `bats/install.bat`, `bats/update.bat`, `bats/install_gpu.bat`, `bats/run.bat`: instalación, actualización,
-  cambio CPU -> CUDA y arranque de la UI (ver sección 1).
+- `bats/install.bat`, `bats/update.bat`, `bats/install_gpu.bat`: instalación, actualización y cambio
+  CPU -> CUDA (ver sección 1).
+- `bats/run.bat` (app de escritorio; cae al navegador si falta pywebview), `bats/run_web.bat` (navegador),
+  `bats/create_shortcuts.bat` (accesos del Escritorio y del menú Inicio) y `bats/build_launcher.bat`
+  (genera `AudioGeneration.exe`).
 - `scripts/setup.ps1`: compatibilidad; llama a `bats\install.bat /y` (`-Smoke` genera los WAV de prueba; `-Recreate` rehace `.venv`).
 - `scripts/check_env.py`: verifica por capas (núcleo, `local`, `cuda`/`cpu`): Python 3.11, ffmpeg, paquetes del núcleo,
   que el núcleo no importe torch y, si está el extra `local`, torch 2.8, backend de torchaudio, CUDA e imports de
