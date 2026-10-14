@@ -65,7 +65,9 @@ def server_entry(python: Path, root: Path = ROOT) -> dict[str, Any]:
     return {
         "command": str(python),
         "args": ["-m", "podcast_tts", "mcp"],
-        "env": dict(ENV),
+        # PYTHONPATH=<repo>\src: igual que los bats y el lanzador, para que funcione aunque la
+        # ruta del proyecto tenga acentos (el .pth editable de uv falla en ese caso).
+        "env": {"PYTHONPATH": str(root / "src"), **ENV},
     }
 
 
@@ -218,7 +220,11 @@ def _run(cmd: Sequence[str]) -> "subprocess.CompletedProcess[str]":
 def claude_code_commands(claude: str, python: Path, *, uninstall: bool) -> list[list[str]]:
     if uninstall:
         return [[claude, "mcp", "remove", "--scope", "user", SERVER_NAME]]
-    return [[claude, "mcp", "add", "--scope", "user", SERVER_NAME, "--",
+    # Las -e van después del nombre: --env es variádico y si fuese delante se tragaría el nombre.
+    env: list[str] = []
+    for key, value in server_entry(python)["env"].items():
+        env += ["-e", f"{key}={value}"]
+    return [[claude, "mcp", "add", "--scope", "user", SERVER_NAME, *env, "--",
              str(python), "-m", "podcast_tts", "mcp"]]
 
 
@@ -243,8 +249,8 @@ def install_claude_code(python: Path, *, uninstall: bool, dry_run: bool,
     claude = claude or find_claude_cli()
     if not claude:
         say("  No se encuentra el CLI 'claude' en el PATH: se omite el registro del MCP.")
-        say("  Cuando lo tengas: claude mcp add --scope user podcast-tts -- "
-            f"\"{python}\" -m podcast_tts mcp")
+        say("  Cuando lo tengas: "
+            + subprocess.list2cmdline(claude_code_commands("claude", python, uninstall=False)[0]))
         return ok
     if dry_run:
         for cmd in claude_code_commands(claude, python, uninstall=uninstall):
@@ -317,6 +323,9 @@ def ensure_mcp_extra(python: Path, *, dry_run: bool, root: Path = ROOT) -> bool:
     if res.returncode != 0:
         say("  ERROR en uv sync (ver arriba).")
         return False
+    fix = root / "scripts" / "fix_editable_pth.py"
+    if fix.is_file() and python.is_file():
+        subprocess.run([str(python), "-I", "-S", str(fix)], cwd=str(root))
     try:
         (root / ".venv" / "podcast-tts-extras.txt").write_text(" ".join(extras) + "\n",
                                                                encoding="utf-8")
@@ -346,7 +355,7 @@ def check_server(python: Path) -> bool:
     try:
         res = subprocess.run([str(python), "-c", CHECK_CODE], capture_output=True, text=True,
                              timeout=120, cwd=str(Path.home()),
-                             env={**os.environ, **ENV})
+                             env={**os.environ, **server_entry(python)["env"]})
     except subprocess.TimeoutExpired:
         say("  ERROR: el servidor no respondió en 120 s.")
         return False
@@ -379,7 +388,7 @@ VS Code (.vscode/mcp.json o "MCP: Open User Configuration"; clave "servers"):
 {vscode}
 
 Comando del servidor (stdio), para cualquier otro cliente: {cli}
-Variables de entorno recomendadas: PYTHONUTF8=1, COQUI_TOS_AGREED=1.
+Variables de entorno: {", ".join(f"{k}={v}" for k, v in entry["env"].items())}.
 Salida por defecto: {ROOT / 'output'} (cámbiala con la variable PODCAST_TTS_OUTPUT_DIR)."""
 
 
