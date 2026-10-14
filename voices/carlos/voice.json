@@ -2,7 +2,7 @@
   "name": "carlos",
   "lang": "es",
   "engine": "f5",
-  "description": "Hombre, castellano. Clip generado con el speaker XTTS 'Luis Moray'.",
+  "description": "Man, Spanish (Spain). Clip generated with the XTTS speaker 'Luis Moray'.",
   "xtts_speaker": null,
   "speed": 1.0
 }
