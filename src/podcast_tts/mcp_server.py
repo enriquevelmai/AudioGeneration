@@ -45,8 +45,10 @@ DEFAULT_WAIT_SECONDS = 45.0
 MAX_WAIT_SECONDS = 600.0
 MAX_SCRIPT_CHARS = 200_000
 MAX_SYNTH_TEXT_CHARS = 5_000
-AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".opus", ".wma", ".aif",
-                    ".aiff"}
+try:  # misma lista que el ensamblador (rutas de música/sfx permitidas)
+    from .assembler import AUDIO_EXTENSIONS
+except ImportError:  # pragma: no cover
+    AUDIO_EXTENSIONS = frozenset({".mp3", ".wav", ".ogg", ".flac", ".m4a"})
 OUTPUT_FORMATS = ("mp3", "wav")
 _NAME_RE = re.compile(r"^[\w][\w\-. ]{0,99}$", re.UNICODE)
 _RESERVED = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)),
@@ -202,17 +204,28 @@ def _check_engine(engine: str | None) -> str | None:
 
 
 def resolve_media_path(raw: str, base_dir: Path | None) -> Path | None:
-    """Misma búsqueda que el ensamblador: base del guion, cwd y raíz del proyecto (o absoluta)."""
+    """Mismas reglas que el ensamblador con ``allow_external_paths=False`` (UI remota).
+
+    Solo rutas relativas, sin ``..``, de ficheros de audio, dentro de la carpeta base del
+    guion o del proyecto. Devuelve ``None`` si la ruta no se permite o no existe.
+    """
     path = Path(raw)
-    if path.is_absolute():
-        return path if path.is_file() else None
-    candidates = ([base_dir / path] if base_dir else []) + [Path.cwd() / path,
-                                                            _project_root() / path]
-    return next((c for c in candidates if c.is_file()), None)
+    if path.is_absolute() or path.drive or path.root or ".." in path.parts:
+        return None
+    if path.suffix.lower() not in AUDIO_EXTENSIONS:
+        return None
+    for root in (base_dir, _project_root()):
+        if root is None:
+            continue
+        root = Path(root).resolve()
+        cand = (root / path).resolve()
+        if cand.is_relative_to(root) and cand.is_file():
+            return cand
+    return None
 
 
 def media_errors(script: Any, base_dir: Path | None) -> list[dict[str, Any]]:
-    """Errores de las rutas de música/sfx (fichero inexistente o que no es audio)."""
+    """Errores de las rutas de música/sfx (no permitidas, inexistentes o que no son audio)."""
     from .script_parser import Music, Sfx
 
     errors: list[dict[str, Any]] = []
@@ -220,17 +233,20 @@ def media_errors(script: Any, base_dir: Path | None) -> list[dict[str, Any]]:
         if not isinstance(seg, (Music, Sfx)) or (isinstance(seg, Music) and seg.stop):
             continue
         kind = "music" if isinstance(seg, Music) else "sfx"
-        if Path(seg.path).suffix.lower() not in AUDIO_EXTENSIONS:
+        path = Path(seg.path)
+        if path.is_absolute() or path.drive or path.root or ".." in path.parts:
+            errors.append({"line": seg.line, "message":
+                           f"[{kind}:{seg.path}] is not allowed: use a path relative to the "
+                           "script folder or the project folder, without '..'"})
+        elif path.suffix.lower() not in AUDIO_EXTENSIONS:
             errors.append({"line": seg.line, "message":
                            f"[{kind}:{seg.path}] is not an audio file (allowed: "
                            f"{', '.join(sorted(AUDIO_EXTENSIONS))})"})
-            continue
-        if resolve_media_path(seg.path, base_dir) is None:
-            where = f"{base_dir}, " if base_dir else ""
+        elif resolve_media_path(seg.path, base_dir) is None:
+            where = f"{base_dir} or " if base_dir else ""
             errors.append({"line": seg.line, "message":
-                           f"[{kind}:{seg.path}] file not found (searched in {where}"
-                           f"the current folder and the project folder). Remove the tag or "
-                           f"use an existing audio file"})
+                           f"[{kind}:{seg.path}] file not found in {where}the project folder. "
+                           "Remove the tag or use an existing audio file"})
     return errors
 
 
@@ -516,7 +532,9 @@ def _render_job(job: Job, segments: Any, *, engine: str | None, base_dir: Path |
                 notice: str | None) -> dict[str, Any]:
     from .assembler import AssembleOptions, assemble, export_audio
 
-    options = AssembleOptions(engine_override=engine, base_dir=base_dir)
+    # Música/sfx con las mismas restricciones que la UI en modo remoto.
+    options = AssembleOptions(engine_override=engine, base_dir=base_dir,
+                              allow_external_paths=False)
     if cfg.cache_dir is not None:
         options.cache_dir = cfg.cache_dir
 
@@ -578,8 +596,9 @@ Y hasta aquí el episodio de hoy. ¡Gracias por escucharnos!
 - Do NOT put `lang:` in the front matter of a bilingual script: each voice already has its
   language (see `list_voices`); use `[voz:ana lang=en]` for a passage in another language.
 - Music/sfx (`[musica:file.mp3 fondo vol=0.12]`, `[sfx:ding.wav]`) only with audio files that
-  really exist; relative paths are looked up in the project's examples/ folder (or use absolute
-  paths). If you have no audio files, do not use these tags.
+  really exist, as paths relative to the project's examples/ folder (or to the script's folder
+  for generate_podcast_from_file) or to the project folder; absolute paths and '..' are not
+  allowed. If you have no audio files, do not use these tags.
 
 ## Podcast structure that sounds good
 
