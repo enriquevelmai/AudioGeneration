@@ -61,8 +61,14 @@ echo.
 echo [2/7] Instalando Python 3.11 ^(gestionado por uv^)...
 "%UV%" python install 3.11
 if errorlevel 1 (
-    echo ERROR instalando Python 3.11 con uv.
-    goto fail
+    REM Puede fallar solo el enlace de version menor aunque Python ya este instalado:
+    REM si uv encuentra un 3.11 utilizable, se sigue adelante.
+    "%UV%" python find 3.11 >nul 2>nul
+    if errorlevel 1 (
+        echo ERROR instalando Python 3.11 con uv.
+        goto fail
+    )
+    echo   AVISO: uv python install devolvio error, pero hay un Python 3.11 utilizable. Se continua.
 )
 
 REM --------------------------------------------------------------------
