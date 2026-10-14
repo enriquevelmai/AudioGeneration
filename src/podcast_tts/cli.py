@@ -181,12 +181,12 @@ def _cmd_models_status(args: argparse.Namespace) -> int:
 
 
 def _cmd_models_download(args: argparse.Namespace, update: bool = False) -> int:
-    from .models import download, model_status, resolve_names
+    from .models import MODELS, download, model_status, resolve_names
 
     models = resolve_names(args.names)
     if update and not args.names:
-        # `models update` a secas: solo lo que ya está descargado (no baja modelos nuevos)
-        models = [m for m in models if model_status(m)["downloaded"]]
+        # `models update` a secas: solo lo que ya está descargado, opcionales incluidos
+        models = [m for m in MODELS if model_status(m)["downloaded"]]
         if not models:
             print("No hay modelos descargados que actualizar (usa: podcast-tts models download).")
             return 0
