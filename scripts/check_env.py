@@ -4,6 +4,7 @@ Capas:
   - núcleo  (siempre): Python 3.11, ffmpeg, numpy, pydub, gradio, pyyaml, scipy, pyloudnorm, huggingface-hub
   - local   (extra `local`): torch/torchaudio 2.8, F5-TTS y XTTS (coqui-tts) importan
   - cuda | cpu (variante de torch): con cuda, además, que PyTorch vea la GPU
+  - desktop (extra `desktop`, opcional): pywebview y el runtime WebView2 (solo avisos)
 
 Uso:  .venv\\Scripts\\python.exe scripts\\check_env.py
 Código de salida 0 si lo instalado es coherente (p.ej. solo núcleo es válido), 1 si algo falla.
@@ -135,6 +136,32 @@ else:
     print("Extra `local` no instalado: solo el motor dummy. Para F5/XTTS: bats\\install.bat")
     if torch_v is not None:
         report("torch sin motores", True, f"torch {torch_v} instalado pero sin el extra local", warn_only=True)
+
+# --------------------------------------------------------------------------- app de escritorio
+section("App de escritorio (extra desktop)")
+pywebview_v = version("pywebview")
+if pywebview_v is None:
+    report("pywebview", False, "no instalado: bats\\run.bat abrirá el navegador "
+           "(para la ventana nativa: bats\\update.bat o uv sync --extra desktop)", warn_only=True)
+else:
+    report("pywebview", True, pywebview_v)
+    if sys.platform == "win32":
+        import winreg
+
+        webview2 = None
+        for hive, sub in ((winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node"),
+                          (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE"),
+                          (winreg.HKEY_CURRENT_USER, r"SOFTWARE")):
+            try:
+                key = sub + r"\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+                with winreg.OpenKey(hive, key) as k:
+                    webview2 = winreg.QueryValueEx(k, "pv")[0]
+                    break
+            except OSError:
+                continue
+        report("Microsoft Edge WebView2 Runtime", bool(webview2) and webview2 != "0.0.0.0",
+               webview2 or "no encontrado: la app usará el navegador "
+               "(https://developer.microsoft.com/microsoft-edge/webview2/)", warn_only=True)
 
 # --------------------------------------------------------------------------- modelos (informativo)
 if has_local:
