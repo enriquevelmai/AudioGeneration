@@ -24,7 +24,8 @@ uv sync --extra local --extra cpu --extra desktop --extra dev
 ```
 
 `bats\install.bat` does the same with GPU detection and extra checks. Use
-`.venv\Scripts\python.exe scripts\check_env.py` to diagnose the environment.
+`.venv\Scripts\python.exe scripts\check_env.py` to diagnose the environment (it should end with
+`ALL OK`).
 
 Set these environment variables in your shell (the `.bat` scripts already do it):
 
@@ -60,13 +61,18 @@ engines (see `tests/test_cloud_engines.py`).
   public APIs. Follow the style of the surrounding code.
 - Heavy imports (torch, f5_tts, TTS) go inside functions, so the CLI, the UI and `engines` start fast
   and the core works without them.
-- **User-facing messages in the CLI and the UI are in Spanish (castellano)**, like the rest of the
-  program: help texts, errors, warnings and UI labels. Code identifiers are in English; comments and
-  docstrings may be in Spanish or English.
+- **English is the project language**: code identifiers, comments, docstrings, documentation and
+  the default user-facing messages (CLI help, errors, warnings and UI labels) are in English.
+- **Spanish is available as a UI/CLI language** (`PODCAST_TTS_LANG=es` or Settings → Language).
+  Every new user-facing string must go through the i18n module (`podcast_tts.i18n`) with an entry
+  in both English and Spanish; do not hard-code messages in either language.
+- README.es.md is the full Spanish translation of README.md: keep it in sync whenever user-facing
+  behaviour changes.
 - Never print, log or include API keys in exceptions. Read them with `podcast_tts.config.get_key`.
 - Do not commit `output/`, `.cache/`, `.venv/`, `.env` or model weights.
-- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
-  (`feat:`, `fix:`, `docs:`, `test:`, `ci:`, `chore:`...).
+- Commit messages are written in English and follow
+  [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `test:`,
+  `ci:`, `chore:`...).
 
 ## Adding a TTS engine
 
@@ -84,7 +90,7 @@ service license is unclear will not be merged.
 
 1. Create a branch from `main`.
 2. Make the change, with tests and documentation (README.md **and** README.es.md when user-facing
-   behaviour changes).
+   behaviour changes, and English and Spanish i18n entries for any new user-facing string).
 3. Add an entry under **Unreleased** in [CHANGELOG.md](CHANGELOG.md).
 4. Run `uv run pytest` (and `uv run pytest -m slow` if you touched engines or audio).
 5. Open the pull request and fill in the template.

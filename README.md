@@ -17,7 +17,7 @@
 </p>
 
 **Write a script in Markdown, get a podcast.** AudioGeneration turns a plain text script with
-simple tags (`[voz:ana]`, `[pausa:1]`, `[musica:intro.mp3]`) into a finished MP3 with several
+simple tags (`[voice:emma]`, `[pause:1]`, `[music:intro.mp3]`) into a finished MP3 with several
 voices, music and sound effects, cloning voices from a 10-second clip, entirely on your own PC.
 
 <p align="center">
@@ -77,7 +77,7 @@ voices, music and sound effects, cloning voices from a 10-second clip, entirely 
 - **Fast re-takes**: a synthesis cache means that after editing a script only the changed
   sentences are generated again.
 - **Three ways to use it**: a desktop app, the same interface in your browser, or a full command
-  line. The interface and the CLI are in Spanish.
+  line. The interface and the CLI are in English by default, with Spanish available.
 - **Honest about licenses**: every engine declares its license, `podcast-tts engines` shows
   which ones allow commercial use, and you get a notice when a script uses a non-commercial one.
 - **Extensible**: add engines as plugins without touching this repository.
@@ -100,7 +100,7 @@ voices, music and sound effects, cloning voices from a 10-second clip, entirely 
    you have an NVIDIA GPU, PyTorch with CUDA. It takes about **10-15 minutes** and **about 6-7 GB** with a
    GPU, depending on your connection. It can also install `ffmpeg`, download the voice models and
    create Desktop and Start menu shortcuts.
-5. The app opens. Click **Generar** on the example script and listen to your first episode.
+5. The app opens. Click **Generate** on the example script and listen to your first episode.
 
 From then on, `AudioGeneration.exe` checks for updates and opens the app in a few seconds.
 
@@ -151,15 +151,16 @@ Double-click `AudioGeneration.exe`, the **AudioGeneration** shortcut, or `bats\r
 interface opens in its own window. If the desktop component (pywebview) is not available,
 `run.bat` opens it in your browser instead.
 
-The app has four tabs (labels are in Spanish):
+The app has four tabs:
 
-- **Guion → Podcast**: script editor with the example preloaded, engine selector, output format,
-  **Validar** (table of segments and voices, with errors by line number) and **Generar** (progress
+- **Script → Podcast**: script editor with the example preloaded, engine selector, output format,
+  **Validate** (table of segments and voices, with errors by line number) and **Generate** (progress
   bar, log, player and download link). Files are saved in `output/`.
-- **Voces**: your voices, their reference clip, **Probar voz** to hear a sentence, and
-  **Añadir voz** to upload or record a clip with the microphone, or pick a built-in XTTS speaker.
-- **Sistema**: GPU and CUDA status, available engines, folders and sizes, cache and generated files.
-- **Ajustes**: API keys for the cloud engines and the license of every engine.
+- **Voices**: your voices, their reference clip, **Test voice** to hear a sentence, and
+  **Add voice** to upload or record a clip with the microphone, or pick a built-in XTTS speaker.
+- **System**: GPU and CUDA status, available engines, folders and sizes, cache and generated files.
+- **Settings**: API keys for the cloud engines, the interface language and the license of every
+  engine.
 
 ### In the browser
 
@@ -177,10 +178,10 @@ $env:PYTHONUTF8 = '1'; $env:COQUI_TOS_AGREED = '1'   # cmd: set PYTHONUTF8=1 & s
 
 ```powershell
 # Generate an episode (MP3 or WAV, by extension)
-podcast-tts generate examples\ejemplo.md -o output\episode.mp3
+podcast-tts generate examples\english_episode.md -o output\episode.mp3
 
 # Check timing and mixing without models or GPU (tones instead of voices)
-podcast-tts generate examples\ejemplo.md -o output\test.mp3 --engine dummy
+podcast-tts generate examples\english_episode.md -o output\test.mp3 --engine dummy
 
 # See how a script is interpreted (JSON), without synthesizing
 podcast-tts parse examples\english_episode.md
@@ -211,13 +212,25 @@ podcast-tts ui --host 0.0.0.0 --auth ana:a-long-password   # your LAN, with user
 > The UI has no accounts: whoever can open it can generate audio, delete voices and use your
 > API keys. With `--host` other than `127.0.0.1`/`localhost`, or with `--share` (a public
 > Gradio link), it refuses to start unless you set `--auth user:password` (or the
-> `PODCAST_TTS_AUTH` variable), and it runs in *remote mode*: no **Ajustes** tab (API keys) and
+> `PODCAST_TTS_AUTH` variable), and it runs in *remote mode*: no **Settings** tab (API keys) and
 > music/sfx only from relative paths. Only expose it on networks you trust.
 
 Useful `generate` options: `--engine` (force one engine for the whole script), `--voices-dir`,
 `--max-chars 250`, `--bitrate 192k`, `--sample-rate 44100`, `--lufs -16`, `--no-normalize`,
 `--no-cache`, `--cache-dir`, `-q`, `--no-license-notice`. Run `podcast-tts <command> --help` for
 the full list.
+
+### Language
+
+The interface and the CLI messages are in English by default. To use them in Spanish, set the
+`PODCAST_TTS_LANG` environment variable before starting the app or the CLI:
+
+```powershell
+$env:PODCAST_TTS_LANG = 'es'   # cmd: set PODCAST_TTS_LANG=es
+```
+
+or choose it in the app under **Settings → Language**. This only changes the UI and CLI messages:
+scripts can be written in any language either way, and the script tags work the same.
 
 ---
 
@@ -228,8 +241,8 @@ A script is a UTF-8 `.md` file. It can start with an optional front matter:
 ```markdown
 ---
 title: My episode
-lang: es              # default language
-default_voice: ana    # voice for text before the first [voz:] tag
+lang: en              # default language
+default_voice: emma   # voice for text before the first [voice:] tag
 engine: f5            # default engine
 paragraph_pause: 0.4  # pause between paragraphs, in seconds
 ---
@@ -237,20 +250,21 @@ paragraph_pause: 0.4  # pause between paragraphs, in seconds
 
 | Tag | Aliases | Effect | Attributes |
 |---|---|---|---|
-| `[voz:name]` | `[voice:name]` | Switches speaker until the next voice tag | `lang=es\|en\|...`, `speed=1.1`, `engine=f5\|xtts\|elevenlabs\|...` |
-| `[pausa:1.5]` | `[pause:1.5]` | Silence of N seconds | |
-| `[musica:file.mp3]` | `[music:...]`, `[música:...]` | Plays a music clip (time advances) | `vol=0-1` (1.0), `fade=s` (0) |
-| `[musica:file.mp3 fondo]` | `bg`, `background` | Background music under the following voices, looped, with ducking | `vol=0-1` (0.15), `fade=s` (1.5) |
-| `[musica:stop]` | `fin`, `parar` | Stops the background music with a fade | `fade=s` (1.5) |
+| `[voice:name]` | `[voz:name]` | Switches speaker until the next voice tag | `lang=es\|en\|...`, `speed=1.1`, `engine=f5\|xtts\|elevenlabs\|...` |
+| `[pause:1.5]` | `[pausa:1.5]` | Silence of N seconds | |
+| `[music:file.mp3]` | `[musica:...]`, `[música:...]` | Plays a music clip (time advances) | `vol=0-1` (1.0), `fade=s` (0) |
+| `[music:file.mp3 bg]` | `background`, `fondo` | Background music under the following voices, looped, with ducking | `vol=0-1` (0.15), `fade=s` (1.5) |
+| `[music:stop]` | `fin`, `parar` | Stops the background music with a fade | `fade=s` (1.5) |
 | `[sfx:file.wav]` | | Sound effect overlaid at that point (time does not advance) | `vol=0-1` (1.0) |
-| `[titulo:...]` | `[title:...]`, `[título:...]` | Metadata, not spoken | |
+| `[title:...]` | `[titulo:...]`, `[título:...]` | Metadata, not spoken | |
 
 - Lines starting with `#` and `<!-- ... -->` blocks (also multi-line) are comments and are never
   spoken. Brackets that are not a `[type:...]` tag, such as `- [ ]` checkboxes, are plain text,
   and Markdown links `[text](url)` are read as "text".
 - A blank line separates paragraphs and adds a short pause.
 - Music and effect paths are relative to the script; quote paths with spaces:
-  `[musica:"my audio/intro.mp3"]`.
+  `[music:"my audio/intro.mp3"]`.
+- The Spanish tags in the Aliases column are accepted too, so older scripts keep working.
 - Errors point to the line number. Priority: language = tag > front matter > voice; engine =
   `--engine` > tag > front matter > voice.
 
@@ -261,19 +275,18 @@ Example:
 title: Local Voices
 lang: en
 ---
-[musica:assets/background.mp3 fondo vol=0.12]
-[voz:emma] Hello and welcome to Local Voices. I'm Emma.
-[voz:david speed=0.95] And I'm David. [pausa:0.8] Today: podcasts from plain text.
-[voz:ana lang=es] ¡Y también en castellano!
-[musica:stop fade=3]
+[music:assets/background.mp3 bg vol=0.12]
+[voice:emma] Hello and welcome to Local Voices. I'm Emma.
+[voice:david speed=0.95] And I'm David. [pause:0.8] Today: podcasts from plain text.
+[voice:ana lang=es] ¡Y también en castellano!
+[music:stop fade=3]
 ```
 
-Ready-to-run examples: [examples/ejemplo.md](examples/ejemplo.md) (Spanish, with English lines),
-[examples/english_episode.md](examples/english_episode.md) (English) and
+Ready-to-run examples: [examples/english_episode.md](examples/english_episode.md) (English),
+[examples/ejemplo.md](examples/ejemplo.md) (Spanish, with English lines) and
 [examples/ejemplo_dialogo.md](examples/ejemplo_dialogo.md) (bilingual dialogue). The scripts you
-save from the app go to `guiones/`, which git ignores. The full reference,
-with more examples, is in [skill/podcast-tts/references/formato-guion.md](skill/podcast-tts/references/formato-guion.md)
-(Spanish).
+save from the app go to `guiones/`, which git ignores. The full reference, with more examples, is
+in [skill/podcast-tts/references/script-format.md](skill/podcast-tts/references/script-format.md).
 
 ---
 
@@ -293,7 +306,7 @@ and `voice.json` (language, engine, speed, description). Included sample voices:
 
 ### Add your own voice
 
-In the app: **Voces → Añadir voz**, upload or record a clip and type its transcript. From the
+In the app: **Voices → Add voice**, upload or record a clip and type its transcript. From the
 command line:
 
 ```powershell
@@ -332,7 +345,7 @@ Cloud voices point to a voice of the provider instead of a clip:
 | `dummy` | Your PC | Test tones | | Not speech |
 | plugins | Depends | Depends | Depends | As declared by the plugin |
 
-Choose the engine per voice (`voice.json`), per line (`[voz:ana engine=openai]`), per script
+Choose the engine per voice (`voice.json`), per line (`[voice:ana engine=openai]`), per script
 (front matter `engine:`) or for the whole run (`--engine`). `podcast-tts engines` shows the
 license, commercial-use status and configuration of each one. To set up the cloud engines and for
 a checklist before publishing, read [docs/COMMERCIAL_USE.md](docs/COMMERCIAL_USE.md). To write your
@@ -368,7 +381,7 @@ the script with your existing voices, validate it and generate the MP3 with this
 - Manually: `powershell -ExecutionPolicy Bypass -File scripts\install_skill.ps1` (creates a link
   in `%USERPROFILE%\.claude\skills\podcast-tts`; `-Copy` copies it instead).
 - The skill is in [skill/podcast-tts/](skill/podcast-tts/) and is documented in
-  [docs/SKILL.md](docs/SKILL.md) (Spanish).
+  [docs/SKILL.md](docs/SKILL.md).
 
 AudioGeneration works fully without it.
 
@@ -461,8 +474,8 @@ opening, `AudioGeneration.exe` shows the end of the log; `launcher.log` (next to
 <details>
 <summary><b>Synthesis is very slow / CUDA is not used</b></summary>
 
-Run `.venv\Scripts\python.exe scripts\check_env.py` (it should end with `TODO OK`) and check the
-**Sistema** tab. If you have an NVIDIA GPU but the CPU build was installed (for example, the driver
+Run `.venv\Scripts\python.exe scripts\check_env.py` (it should end with `ALL OK`) and check the
+**System** tab. If you have an NVIDIA GPU but the CPU build was installed (for example, the driver
 was missing during installation), update the driver and run `bats\install_gpu.bat`.
 `PODCAST_TTS_DEVICE=cpu` or `cuda` forces the device. The first generation is always slower
 because the models are loaded.
