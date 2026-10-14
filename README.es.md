@@ -22,8 +22,16 @@ varias voces, música y efectos, clonando voces a partir de un clip de 10 segund
 propio PC.
 
 <p align="center">
-  <img src="docs/img/app.png" alt="App de escritorio de AudioGeneration: editor de guion, tabla de validación y reproductor" width="90%">
+  <img src="docs/img/app.png" alt="App de escritorio de AudioGeneration: editor de guion, opciones de motor y salida, y reproductor con el episodio generado" width="90%">
 </p>
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/img/voices.png" alt="Pestaña Voces: voces disponibles, voz seleccionada y prueba de voz" width="280"><br><sub>Voces</sub></td>
+    <td align="center"><img src="docs/img/settings.png" alt="Pestaña Ajustes: claves de API y tabla de motores y licencias" width="280"><br><sub>Ajustes: motores y licencias</sub></td>
+    <td align="center"><img src="docs/img/desktop-loading.png" alt="Pantalla de arranque de la app de escritorio" width="280"><br><sub>Arranque de la app de escritorio</sub></td>
+  </tr>
+</table>
 
 > [!IMPORTANT]
 > **El código es MIT, pero los modelos de voz por defecto son de uso NO comercial.** F5-TTS /

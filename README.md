@@ -21,8 +21,16 @@ simple tags (`[voz:ana]`, `[pausa:1]`, `[musica:intro.mp3]`) into a finished MP3
 voices, music and sound effects, cloning voices from a 10-second clip, entirely on your own PC.
 
 <p align="center">
-  <img src="docs/img/app.png" alt="AudioGeneration desktop app: script editor, validation table and audio player" width="90%">
+  <img src="docs/img/app.png" alt="AudioGeneration desktop app: script editor, engine and output options, and the audio player with the generated episode" width="90%">
 </p>
+
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/img/voices.png" alt="Voices tab: available voices, selected voice and voice test" width="280"><br><sub>Voices</sub></td>
+    <td align="center"><img src="docs/img/settings.png" alt="Settings tab: API keys and table of engines and licenses" width="280"><br><sub>Settings: engines and licenses</sub></td>
+    <td align="center"><img src="docs/img/desktop-loading.png" alt="Desktop app loading screen" width="280"><br><sub>Desktop app starting</sub></td>
+  </tr>
+</table>
 
 > [!IMPORTANT]
 > **The code is MIT, but the default voice models are non-commercial.** F5-TTS / F5-Spanish
