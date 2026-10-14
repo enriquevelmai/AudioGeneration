@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -83,11 +84,12 @@ def test_main_with_config_path(ii: Any, tmp_path: Path, capsys: pytest.CaptureFi
     cfg = tmp_path / "cfg.json"
     cfg.write_text('{"mcpServers": {}}', encoding="utf-8")
     rc = ii.main(["/claude-desktop", "--config-path", str(cfg), "--no-check",
-                  "--python", str(ROOT / ".venv" / "Scripts" / "python.exe")])
+                  "--python", sys.executable])
     out = capsys.readouterr().out
     assert rc == 0, out
     assert "podcast-tts" in json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"]
-    rc = ii.main(["--claude-desktop", "--config-path", str(cfg), "--no-check", "--uninstall"])
+    rc = ii.main(["--claude-desktop", "--config-path", str(cfg), "--no-check", "--uninstall",
+                  "--python", sys.executable])
     assert rc == 0
     assert json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"] == {}
 
