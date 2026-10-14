@@ -80,3 +80,60 @@ def test_invalid_inputs(tmp_path) -> None:
     with pytest.raises(VoiceError, match="no existe"):
         add_voice("ok", tmp_path / "nada.wav", "x", voices_dir=tmp_path)
     assert list_voices(tmp_path / "no_existe") == []
+
+
+# --------------------------------------------------------------------------- #
+# Regresiones de la revisión de código
+# --------------------------------------------------------------------------- #
+
+
+def _make_voice_dir(root, name: str, content: str) -> None:
+    d = root / name
+    d.mkdir(parents=True)
+    (d / "voice.json").write_text(content, encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "{no es json",
+        '["una", "lista"]',
+        '"texto"',
+        '{"speed": "rapido"}',
+        '{"speed": [1]}',
+        '{"speed": "nan"}',
+        '{"provider_options": [1, 2]}',
+        '{"xtts_speaker": 3}',
+    ],
+)
+def test_broken_voice_json_is_voice_error_and_skipped(tmp_path, content: str) -> None:
+    _make_voice_dir(tmp_path, "rota", content)
+    _make_voice_dir(tmp_path, "buena", '{"engine": "xtts", "xtts_speaker": "Ana Florence"}')
+    with pytest.raises(VoiceError):
+        get_voice("rota", voices_dir=tmp_path)
+    with pytest.warns(UserWarning, match="rota"):
+        voices = list_voices(tmp_path)
+    assert [v.name for v in voices] == ["buena"]
+
+
+@pytest.mark.parametrize("name", ["../secreto", "..", "a/../../b", "..\\secreto", "/abs", "C:\\x"])
+def test_get_voice_rejects_path_traversal(tmp_path, name: str) -> None:
+    voices_dir = tmp_path / "voices"
+    voices_dir.mkdir()
+    _make_voice_dir(tmp_path, "secreto", '{"engine": "xtts", "xtts_speaker": "Ana Florence"}')
+    with pytest.raises(VoiceNotFoundError):
+        get_voice(name, voices_dir=voices_dir)
+
+
+@pytest.mark.parametrize("name", ["CON", "con", "Prn", "aux", "NUL", "COM1", "com9", "LPT1", "lpt9"])
+def test_reserved_windows_names_rejected(tmp_path, name: str) -> None:
+    with pytest.raises(VoiceError, match="reservado"):
+        add_voice(name, None, xtts_speaker="Ana Florence", engine="xtts", voices_dir=tmp_path)
+    with pytest.raises(VoiceError):
+        remove_voice(name, voices_dir=tmp_path)
+
+
+def test_names_similar_to_reserved_are_allowed(tmp_path) -> None:
+    for name in ("console", "COM10", "nul_2", "LPT0"):
+        add_voice(name, None, xtts_speaker="Ana Florence", engine="xtts", voices_dir=tmp_path)
+    assert {v.name for v in list_voices(tmp_path)} == {"console", "COM10", "nul_2", "LPT0"}

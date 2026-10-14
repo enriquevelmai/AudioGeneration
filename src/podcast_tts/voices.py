@@ -19,6 +19,7 @@ variable de entorno ``PODCAST_TTS_VOICES_DIR`` o pasando ``voices_dir``.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -49,6 +50,12 @@ MAX_REF_SECONDS = 15.0
 MIN_REF_SECONDS = 3.0
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]*$")
+# Nombres de dispositivo reservados de Windows (no valen como carpeta).
+_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
 
 # Speakers integrados de XTTS v2 (58, en el orden de ``TTS(...).speakers``; ver docs/ENGINES.md).
 XTTS_BUILTIN_SPEAKERS: tuple[str, ...] = (
@@ -192,31 +199,57 @@ class Voice:
 
     @classmethod
     def from_dir(cls, path: Path) -> "Voice":
-        """Carga una voz desde su directorio (voice.json opcional)."""
+        """Carga una voz desde su directorio (voice.json opcional).
+
+        Lanza :class:`VoiceError` si ``voice.json`` no es JSON válido, no es un
+        objeto o tiene valores de tipo incorrecto.
+        """
         data: dict[str, Any] = {}
         cfg = path / "voice.json"
         if cfg.is_file():
             try:
                 data = json.loads(cfg.read_text(encoding="utf-8"))
-            except json.JSONDecodeError as exc:
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
                 raise VoiceError(f"voice.json inválido en {path}: {exc}") from exc
+            if not isinstance(data, dict):
+                raise VoiceError(
+                    f"voice.json inválido en {path}: debe ser un objeto JSON "
+                    f"({{...}}), no {type(data).__name__}"
+                )
         known = {"name", "lang", "engine", "description", "xtts_speaker", "speed",
                  "provider_voice_id", "provider_options"}
         options = data.get("provider_options") or {}
         if not isinstance(options, dict):
             raise VoiceError(f"'provider_options' debe ser un objeto JSON en {cfg}")
-        return cls(
-            name=path.name,
-            path=path,
-            lang=str(data.get("lang") or "es"),
-            engine=str(data.get("engine") or "f5").lower(),
-            description=str(data.get("description") or ""),
-            xtts_speaker=data.get("xtts_speaker") or None,
-            speed=float(data.get("speed") or 1.0),
-            extra={k: v for k, v in data.items() if k not in known},
-            provider_voice_id=str(data.get("provider_voice_id") or "").strip() or None,
-            provider_options=dict(options),
-        )
+        speaker = data.get("xtts_speaker") or None
+        if speaker is not None and not isinstance(speaker, str):
+            raise VoiceError(f"'xtts_speaker' debe ser un texto en {cfg}")
+        raw_speed = data.get("speed") or 1.0
+        try:
+            if isinstance(raw_speed, bool):
+                raise TypeError("booleano")
+            speed = float(raw_speed)
+        except (TypeError, ValueError) as exc:
+            raise VoiceError(
+                f"'speed' debe ser un número en {cfg} (valor: {raw_speed!r})"
+            ) from exc
+        if not math.isfinite(speed) or speed <= 0:
+            raise VoiceError(f"'speed' debe ser un número positivo en {cfg}")
+        try:
+            return cls(
+                name=path.name,
+                path=path,
+                lang=str(data.get("lang") or "es"),
+                engine=str(data.get("engine") or "f5").lower(),
+                description=str(data.get("description") or ""),
+                xtts_speaker=speaker,
+                speed=speed,
+                extra={k: v for k, v in data.items() if k not in known},
+                provider_voice_id=str(data.get("provider_voice_id") or "").strip() or None,
+                provider_options=dict(options),
+            )
+        except (TypeError, ValueError) as exc:
+            raise VoiceError(f"voice.json inválido en {path}: {exc}") from exc
 
 
 def default_voices_dir() -> Path:
@@ -252,10 +285,28 @@ def _dir(voices_dir: str | Path | None) -> Path:
 
 
 def _validate_name(name: str) -> None:
-    if not _NAME_RE.match(name or ""):
+    if not isinstance(name, str) or not _NAME_RE.match(name):
         raise VoiceError(
             f"nombre de voz inválido {name!r}: usa letras, números, '_' o '-' (sin espacios)"
         )
+    if name.upper() in _RESERVED_NAMES:
+        raise VoiceError(
+            f"nombre de voz inválido {name!r}: es un nombre reservado de Windows "
+            "(CON, PRN, AUX, NUL, COM1-9, LPT1-9)"
+        )
+
+
+def _voice_path(root: Path, name: str) -> Path:
+    """Ruta de la voz ``name`` dentro de ``root``; nunca sale de ``root``."""
+    _validate_name(name)
+    path = root / name
+    try:
+        inside = path.resolve().is_relative_to(root.resolve())
+    except OSError:
+        inside = False
+    if not inside:
+        raise VoiceError(f"nombre de voz inválido {name!r}: sale del directorio de voces")
+    return path
 
 
 def list_voices(voices_dir: str | Path | None = None) -> list[Voice]:
@@ -266,14 +317,20 @@ def list_voices(voices_dir: str | Path | None = None) -> list[Voice]:
     voices = []
     for sub in sorted(root.iterdir(), key=lambda p: p.name.lower()):
         if sub.is_dir() and ((sub / "voice.json").is_file() or (sub / "ref.wav").is_file()):
-            voices.append(Voice.from_dir(sub))
+            try:
+                voices.append(Voice.from_dir(sub))
+            except VoiceError as exc:
+                warnings.warn(f"se omite la voz '{sub.name}': {exc}", stacklevel=2)
     return voices
 
 
 def get_voice(name: str, voices_dir: str | Path | None = None) -> Voice:
     """Devuelve la voz ``name``; lanza :class:`VoiceNotFoundError` si no existe."""
     root = _dir(voices_dir)
-    path = root / name
+    try:
+        path = _voice_path(root, name)
+    except VoiceError as exc:
+        raise VoiceNotFoundError(f"la voz '{name}' no existe: {exc}") from exc
     if not path.is_dir() or not ((path / "voice.json").is_file() or (path / "ref.wav").is_file()):
         available = ", ".join(v.name for v in list_voices(root)) or "(ninguna)"
         raise VoiceNotFoundError(
@@ -356,7 +413,7 @@ def add_voice(
         warnings.warn("F5-TTS necesita la transcripción del clip (ref.txt).", stacklevel=2)
 
     root = _dir(voices_dir)
-    path = root / name
+    path = _voice_path(root, name)
     if path.exists():
         if not overwrite:
             raise VoiceError(f"la voz '{name}' ya existe (usa overwrite=True / --overwrite)")
