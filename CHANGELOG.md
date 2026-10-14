@@ -5,57 +5,6 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Security
-
-- The UI refuses to start with `--host` other than loopback or with `--share` unless
-  `--auth user:password` (or `PODCAST_TTS_AUTH`) is set. In that remote mode the Settings tab is
-  hidden and music/sfx paths must be relative; internal events are private in the Gradio API.
-- `[voice:../x]` can no longer read outside `voices/`; Windows reserved names (CON, NUL...) are
-  rejected as voice names. The launcher only opens release URLs of this repository.
-
-### Fixed
-
-- Installing into a folder with accents or `ñ` (e.g. `C:\Users\José\...`) now works: the
-  editable install's `.pth` is rewritten as ASCII after `uv sync`, and the launcher and the `.bat`
-  scripts also set `PYTHONPATH`.
-- The `.bat` scripts work in folders with `&`, `!`, `( )`, `[ ]` or spaces, check that they run
-  from an extracted project, and `update.bat` returns an error (shown by the launcher) when
-  `git pull` fails. The `.ps1` scripts use `-LiteralPath`.
-- Loudness normalization now reaches the target (±0.5 LU) instead of ending ~1.5 LU lower
-  because of the peak limit.
-- Multi-line HTML comments are no longer read aloud; Markdown links and checkboxes are plain
-  text; `lang: no` stays `"no"`; `nan`, `inf` and huge pauses or fades are rejected.
-- A malformed `voice.json` no longer breaks the voice list; clearer errors without ffmpeg.
-- The synthesis cache depends on the model version and parameters of each engine.
-- The launcher no longer offers to update while the app is open, detects when the app dies at
-  startup, and each installation has its own single-instance lock and log.
-- `.env` values in quotes followed by a comment are read correctly.
-
-### Changed
-
-- English is now the primary language of the project: documentation, CLI help and messages, UI
-  labels and default messages are in English. The documentation in `docs/` and the skill were
-  translated to English; README.es.md remains as the full Spanish translation of the README.
-- The UI and CLI messages are available in Spanish with `PODCAST_TTS_LANG=es` or under
-  **Settings → Language** in the UI.
-- English script tags are now canonical (`[voice:]`, `[pause:]`, `[music:]`, `bg`/`background`,
-  `[music:stop]`, `[title:]`); the Spanish tags (`[voz:]`, `[pausa:]`, `[musica:]`/`[música:]`,
-  `fondo`, `fin`/`parar`, `[titulo:]`/`[título:]`) are still accepted as aliases.
-- `examples/english_episode.md` is the main example, and all the example scripts use the English
-  tags.
-- The skill's script reference was renamed to `references/script-format.md`, and its wrapper
-  scripts to `scripts/generate.ps1` and `scripts/generate.sh` (`generar.ps1` and `generar.sh` are
-  kept as thin wrappers for compatibility).
-- `scripts/check_env.py` now ends with `ALL OK` instead of `TODO OK`.
-- The release zip contains an `AudioGeneration/` folder. `install.bat /y` also creates the
-  shortcuts (`/noshortcuts` to skip them) and installs the `dev` extra only with `/dev`.
-- The example `guiones/ejemplo_dialogo.md` moved to `examples/`; `guiones/` (where the app saves
-  your scripts) is ignored by git.
-- In the browser mode without a console, a small window lets you reopen the browser or close
-  AudioGeneration.
-
 ## [1.0.0] - 2026-10-14
 
 First public release.
@@ -65,10 +14,9 @@ First public release.
 #### Scripts and audio
 
 - Markdown script format with optional front matter (`title`, `lang`, `default_voice`, `engine`,
-  `paragraph_pause`) and inline tags: `[voz:...]` with `lang=`, `speed=` and `engine=` attributes,
-  `[pausa:N]`, `[musica:...]` (inserted clips, looping background music with ducking,
-  `[musica:stop]`), `[sfx:...]` and `[titulo:...]`. English aliases (`[voice:]`, `[pause:]`,
-  `[music:]`) are accepted.
+  `paragraph_pause`) and inline tags: `[voice:...]` with `lang=`, `speed=` and `engine=`
+  attributes, `[pause:N]`, `[music:...]` (inserted clips, looping background music with ducking,
+  `[music:stop]`), `[sfx:...]` and `[title:...]`.
 - Comment lines (`#` and `<!--`), sentence-aware chunking (`--max-chars`), quoted paths with spaces,
   and parse errors that point to the line number.
 - Assembler with resampling, paragraph pauses, music fades, loudness normalization to -16 LUFS
@@ -102,13 +50,13 @@ First public release.
 #### Applications
 
 - Command line `podcast-tts` (also `python -m podcast_tts`) with the `generate`, `parse`, `voices`,
-  `engines`, `config`, `models`, `ui` and `desktop` commands. Messages are in Spanish.
-- Web UI (Gradio, in Spanish) with the **Guion → Podcast**, **Voces**, **Sistema** and **Ajustes**
+  `engines`, `config`, `models`, `ui`, `desktop` and `mcp` commands.
+- Web UI (Gradio) with the **Script → Podcast**, **Voices**, **System** and **Settings**
   tabs: script editor with validation and progress, voice preview, recording and cloning, system
   status, API keys and engine licenses.
 - Desktop app (`podcast-tts desktop`, `desktop` extra) that shows the UI in a native window with
   pywebview.
-- API key management in `.env` with `podcast-tts config` or the **Ajustes** tab.
+- API key management in `.env` with `podcast-tts config` or the **Settings** tab.
 - Model management with `podcast-tts models list|status|download|update`. Models are downloaded from
   Hugging Face on first use and are never stored in the repository.
 - Optional `podcast-tts` skill for Claude Code, with portable PowerShell and Bash wrappers.
@@ -134,6 +82,24 @@ First public release.
   research, podcast structure, ~150 words per minute) and prefers the MCP tools when available.
 - Reference: `docs/MCP.md`.
 
+#### Languages
+
+- English is the primary language: documentation, CLI help and messages, UI labels and default
+  messages. The UI and CLI are also available in Spanish with `PODCAST_TTS_LANG=es` or under
+  **Settings → Language**; `README.es.md` is a full Spanish translation of the README.
+- English script tags are canonical (`[voice:]`, `[pause:]`, `[music:]`, `bg`, `[music:stop]`,
+  `[title:]`); the Spanish tags (`[voz:]`, `[pausa:]`, `[musica:]`, `fondo`, `[titulo:]`) are
+  accepted as aliases.
+
+#### Security
+
+- The UI listens on `127.0.0.1` by default and refuses to start with another `--host` or with
+  `--share` unless `--auth user:password` (or `PODCAST_TTS_AUTH`) is set. In that remote mode the
+  Settings tab is hidden, music/sfx paths must be relative and internal events are private in
+  the Gradio API.
+- API keys are never printed, logged or cached; voice names cannot escape `voices/` and Windows
+  reserved names are rejected; the launcher only opens release URLs of this repository.
+
 #### Installation and distribution
 
 - `bats\install.bat`: installs uv, Python 3.11 and a locked `.venv`, detects an NVIDIA GPU (PyTorch
@@ -157,5 +123,4 @@ First public release.
 - Continuous integration on Ubuntu and Windows (core only), issue and pull request templates.
 - Example scripts in Spanish, English and a bilingual dialogue.
 
-[Unreleased]: https://github.com/enriquevelmai/AudioGeneration/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/enriquevelmai/AudioGeneration/releases/tag/v1.0.0

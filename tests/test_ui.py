@@ -200,7 +200,7 @@ def _fn_names(app) -> set[str]:
 def test_internal_events_are_private(cfg: ui.UIConfig) -> None:
     app = ui.build_app(cfg)
     public = {f.api_name for f in app.fns.values() if f.api_visibility != "private"}
-    assert public == {"validar", "generar", "probar_voz"}
+    assert public == {"validate", "generate", "test_voice"}
     assert {"_save_key", "_delete_key", "_do_delete", "_add"} <= _fn_names(app)
 
 

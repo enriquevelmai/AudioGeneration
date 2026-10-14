@@ -987,10 +987,9 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
             with gr.Accordion(t("ui.help_title"), open=False):
                 gr.Markdown(help_markdown())
 
-            # The API names ("validar", "generar", "probar_voz") are kept for compatibility
-            # with existing gradio_client callers.
+            # Public API endpoints for gradio_client: "validate", "generate" and "test_voice".
             validate_btn.click(lambda t_, e: validate_script(t_, e, cfg), [editor, engine],
-                               [segments, report], api_name="validar")
+                               [segments, report], api_name="validate")
             _notice = lambda t_, e: generation_license_notice(t_, e, cfg)  # noqa: E731
             engine.change(_notice, [editor, engine], engine_notice, api_visibility="private")
             editor.blur(_notice, [editor, engine], engine_notice, api_visibility="private")
@@ -1000,7 +999,7 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                 yield from generate_events(t_, e, n, f, b, norm, cfg, progress)
 
             generate_btn.click(_generate, [editor, engine, out_name, fmt, bitrate, normalize],
-                               [player, download, log], api_name="generar")
+                               [player, download, log], api_name="generate")
             load_file.upload(load_script_file, load_file, editor, api_visibility="private")
             open_out_btn.click(lambda: open_output_folder(cfg), None, open_out_msg,
                                api_visibility="private")
@@ -1085,7 +1084,7 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                              api_visibility="private")
             test_btn.click(lambda n, e, p: test_voice(n, e, p, cfg),
                            [voice_sel, test_engine, test_phrase], [test_player, test_msg],
-                           api_name="probar_voz")
+                           api_name="test_voice")
 
             def _ask_delete(name):
                 if not name:
