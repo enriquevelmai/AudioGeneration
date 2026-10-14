@@ -68,10 +68,11 @@ def _load_model() -> Any:
         os.environ.setdefault("COQUI_TOS_AGREED", "1")
         t0 = time.perf_counter()
         try:
-            import torch
             from TTS.api import TTS
 
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            from ..device import select_device
+
+            device = select_device("XTTS v2")
             _model = TTS(MODEL_NAME, progress_bar=False).to(device)
         except ImportError as exc:
             raise EngineError(f"coqui-tts no está instalado ({exc}). Ejecuta scripts/setup.ps1.") from exc

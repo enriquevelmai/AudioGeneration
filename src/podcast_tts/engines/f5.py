@@ -56,9 +56,9 @@ def loaded_models() -> list[str]:
 
 
 def _device() -> str:
-    import torch
+    from ..device import select_device
 
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    return select_device("F5-TTS")
 
 
 def _load_model(key: str) -> Any:
