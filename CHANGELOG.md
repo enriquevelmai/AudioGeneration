@@ -99,6 +99,27 @@ First public release.
   Hugging Face on first use and are never stored in the repository.
 - Optional `podcast-tts` skill for Claude Code, with portable PowerShell and Bash wrappers.
 
+#### AI assistants (MCP)
+
+- MCP server over stdio (`podcast-tts mcp`, `python -m podcast_tts mcp` or `podcast-tts-mcp`,
+  `mcp` extra) built with the official Python SDK, so any MCP client (Claude Desktop, Claude Code,
+  Cursor, VS Code...) can turn "make me a podcast about X" into an MP3. Tools: `list_voices`,
+  `list_engines`, `get_script_format`, `validate_script` (errors with line numbers, missing voices,
+  estimated duration), `generate_podcast`, `generate_podcast_from_file`, `get_generation_status`,
+  `synthesize_text`, `add_voice`, `list_outputs` and `open_output_folder`, plus a `podcast` prompt
+  and a `podcast-tts://script-format` resource.
+- Per-segment progress notifications; generations longer than 45 s return a job id that the
+  assistant polls, so client timeouts are never hit. Output in `output/` or
+  `PODCAST_TTS_OUTPUT_DIR`, validated output names, music/sfx paths restricted like the remote UI,
+  and stdout reserved for the protocol (library output goes to stderr).
+- `bats\install_integrations.bat` (`scripts/install_integrations.py`): idempotent registration in
+  Claude Code (skill + `claude mcp add --scope user`) and Claude Desktop (merges
+  `claude_desktop_config.json` with a `.bak` backup), JSON for other clients (`/print`),
+  `--uninstall`, `--dry-run` and `--config-path` for testing.
+- The `podcast-tts` skill now covers the end-to-end "make me a podcast about X" flow (defaults,
+  research, podcast structure, ~150 words per minute) and prefers the MCP tools when available.
+- Reference: `docs/MCP.md`.
+
 #### Installation and distribution
 
 - `bats\install.bat`: installs uv, Python 3.11 and a locked `.venv`, detects an NVIDIA GPU (PyTorch

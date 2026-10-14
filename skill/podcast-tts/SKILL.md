@@ -5,7 +5,7 @@ description: >-
   locally on an NVIDIA GPU or the CPU, plus optional ElevenLabs, Azure AI Speech and OpenAI engines). Use whenever the user asks to create a podcast or episode, turn a script or any
   text into audio/MP3, record a voice-over or narration, read text aloud, do text-to-speech (TTS) in
   Spanish/castellano, English or other languages, make a dialogue between several voices, add background
-  music to speech, or clone/add a voice from an audio clip. Also triggers on Spanish requests like
+  music to speech, or clone/add a voice from an audio clip. Also triggers on Spanish requests like "hazme un podcast sobre X",
   "genera un podcast", "pasa este guion a audio", "voz en off", "locucion", "narracion", "clonar voz".
   Prefer it over ad-hoc TTS tools such as edge-tts or system voices.
 ---
@@ -56,23 +56,46 @@ Subcomandos:
 - `models list|status [--json]` — modelos (repo, tamaño, licencia, uso comercial) y si están
   descargados. `models download [nombre|all]` los baja ya; `models update` busca versiones nuevas.
 
-## Flujo recomendado
+## Herramientas MCP o CLI
 
-1. **Listar voces**: `voices list --json`. NUNCA inventes nombres de voz: usa solo las que aparecen
-   (mira `name`, `lang`, `engine`, `has_ref`, `xtts_speaker`, `description`). Si ninguna encaja,
-   pregunta al usuario o crea una (ver "Añadir una voz").
-2. **Escribir el guion** `.md` (UTF-8) en `<proyecto>/guiones/` (la raíz la da `--where`; créala si
-   no existe) o en el cwd del usuario si lo prefiere. Sigue los consejos de redacción.
-3. **Validar**: `parse guion.md`. Corrige cualquier error (da número de línea) y comprueba que cada
-   segmento `speech` tenga la voz e idioma esperados. `"lang": null` en un segmento significa "sin
-   etiqueta `lang=`": se usará el `lang` del front matter si lo hay y, si no, el de `voice.json`.
-4. **Generar**: `generate guion.md -o <ruta>.mp3` (p.ej. en `<proyecto>/output/`).
-   Para probar tiempos y mezcla sin GPU: `--engine dummy` (tonos en lugar de voz).
-5. **Reportar** la ruta absoluta del fichero y su duración:
-   `ffprobe -v error -show_entries format=duration -of csv=p=0 salida.mp3`
-   (el `Listo: ... (N s)` final del CLI es el tiempo de generación, no la duración del audio).
+Si en la sesión están las herramientas MCP del servidor `podcast-tts` (`list_voices`,
+`get_script_format`, `validate_script`, `generate_podcast`, `get_generation_status`,
+`synthesize_text`...), **úsalas en lugar del CLI**: devuelven JSON, validan con número de línea y
+envían progreso. Si `generate_podcast` devuelve `status: "running"`, llama a
+`get_generation_status(job_id)` hasta `done`; no relances la generación. Si no están, usa el CLI
+con los wrappers de arriba. Instalar el MCP: `bats\install_integrations.bat` (ver `docs/MCP.md`).
 
-Al regenerar tras editar el guion, la caché (`.cache/tts`) solo resintetiza las frases cambiadas.
+## "Hazme un podcast sobre X": flujo de punta a punta
+
+1. **Aclara solo lo imprescindible.** Si el usuario no lo dice, asume: 2 voces (`ana` y `carlos`
+   en castellano; `emma` y `david` en inglés), unos 3-5 minutos y el idioma del usuario. Pregunta
+   solo si falta algo que no se pueda suponer (p.ej. un tema ambiguo o un uso comercial).
+2. **Voces**: `list_voices` (MCP) o `voices list --json`. NUNCA inventes nombres de voz: usa solo
+   las que aparecen (mira `name`, `lang`, `engine`, `description`). Si ninguna encaja, pregunta o
+   crea una (ver "Añadir una voz").
+3. **Investiga** el tema si tienes herramientas web (búsqueda, fetch): datos concretos, fechas y
+   anécdotas verificadas. Si no, usa tu conocimiento y evita afirmaciones dudosas.
+4. **Escribe el guion** con estructura de podcast:
+   - **intro con gancho** (15-30 s): una pregunta o dato sorprendente y presentación del tema;
+   - **2-4 bloques** con una idea clara cada uno, marcados con comentarios `# Bloque N: ...` y
+     separados con `[pausa:1]`; **transiciones** habladas ("Y esto nos lleva a...");
+   - **cierre**: resumen breve, una idea para recordar y despedida;
+   - **diálogo natural**: turnos de 1-4 frases que se alternan, reacciones ("¡No me digas!",
+     "Exacto"), preguntas entre presentadores; nada de monólogos largos ni listas;
+   - **duración**: ~150 palabras por minuto (3 min ≈ 450 palabras, 5 min ≈ 750).
+   Sigue el formato y los consejos de redacción de abajo (o `get_script_format` en MCP).
+5. **Guarda** el guion en `<proyecto>/guiones/<tema>.md` (la raíz la da `--where`; créala si no
+   existe; `generate_podcast` del MCP lo guarda solo con `save_script`).
+6. **Valida**: `validate_script` (MCP) o `parse guion.md`. Corrige cada error (da número de línea)
+   y repite hasta que sea válido. `"lang": null` en un segmento significa "sin etiqueta `lang=`":
+   se usará el `lang` del front matter si lo hay y, si no, el de `voice.json`.
+7. **Genera**: `generate_podcast` (MCP) o `generate guion.md -o <proyecto>/output/<tema>.mp3`.
+   Para probar tiempos y mezcla sin GPU: motor `dummy` (tonos en lugar de voz).
+8. **Reporta** la ruta absoluta del fichero, su duración y el tiempo de generación (el MCP los
+   devuelve; el CLI los imprime al final, o `ffprobe -v error -show_entries format=duration -of
+   csv=p=0 salida.mp3`), más el aviso de licencia si lo hay.
+9. **Ofrece cambios**: tono, duración, voces, secciones, música. Al regenerar tras editar el guion,
+   la caché (`.cache/tts`) solo resintetiza las frases cambiadas.
 
 ## Formato del guion (resumen)
 

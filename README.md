@@ -52,6 +52,7 @@ voices, music and sound effects, cloning voices from a 10-second clip, entirely 
 - [Engines and commercial use](#engines-and-commercial-use)
 - [Models](#models)
 - [Claude Code integration](#claude-code-integration)
+- [Use it from AI assistants (MCP)](#use-it-from-ai-assistants-mcp)
 - [Updating](#updating)
 - [Troubleshooting](#troubleshooting)
 - [Project structure](#project-structure)
@@ -370,6 +371,65 @@ the script with your existing voices, validate it and generate the MP3 with this
   [docs/SKILL.md](docs/SKILL.md) (Spanish).
 
 AudioGeneration works fully without it.
+
+---
+
+## Use it from AI assistants (MCP)
+
+AudioGeneration includes an [MCP](https://modelcontextprotocol.io) server, so you can ask **any
+MCP-compatible assistant** (Claude Desktop, Claude Code, Cursor, VS Code, Windsurf...) *"make me a
+podcast about X"* and it will write the script, validate it and generate the complete MP3 on your
+computer, with your voices. The server exposes tools such as `list_voices`, `get_script_format`,
+`validate_script`, `generate_podcast`, `synthesize_text` and `add_voice`, plus a `podcast` prompt.
+
+**Install** (after `bats\install.bat`):
+
+```bat
+bats\install_integrations.bat
+```
+
+It installs the `mcp` extra if needed, then detects and asks:
+
+- **Claude Code**: installs the skill and runs `claude mcp add --scope user podcast-tts ...`.
+- **Claude Desktop**: adds `podcast-tts` to `%APPDATA%\Claude\claude_desktop_config.json`, keeping
+  your other servers and saving a `.bak` copy first. Restart Claude Desktop afterwards.
+- **Other clients**: prints the JSON to paste.
+
+Options: `/y` (no questions), `/claude-code`, `/claude-desktop`, `/print`, `--uninstall`. It can be
+run again at any time.
+
+**Manual configuration** for Cursor (`~/.cursor/mcp.json`), Claude Desktop and most clients
+(`bats\install_integrations.bat /print` prints it with your real paths; VS Code uses `"servers"`
+with `"type": "stdio"`):
+
+```json
+{
+  "mcpServers": {
+    "podcast-tts": {
+      "command": "C:\\path\\to\\AudioGeneration\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "podcast_tts", "mcp"],
+      "env": {
+        "PYTHONPATH": "C:\\path\\to\\AudioGeneration\\src",
+        "PYTHONUTF8": "1",
+        "COQUI_TOS_AGREED": "1"
+      }
+    }
+  }
+}
+```
+
+**Example:**
+
+> **You:** Make me a 3-minute podcast about the history of coffee, with Emma and David.
+>
+> **Assistant:** *(lists the voices, reads the script format, writes a ~450-word dialogue,
+> validates it and generates it)* Done: `C:\...\AudioGeneration\output\history_of_coffee.mp3`
+> (3:04, generated in 1 min 25 s). Note: F5-TTS is for non-commercial use. Want me to change the
+> tone, the length or the voices?
+
+Files are saved to `output/` (or `PODCAST_TTS_OUTPUT_DIR`). Long episodes do not hit client
+timeouts: the tool returns a job id after 45 s and the assistant polls `get_generation_status`.
+Full tool reference: [docs/MCP.md](docs/MCP.md).
 
 ---
 

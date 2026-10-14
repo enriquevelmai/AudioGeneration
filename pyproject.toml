@@ -63,6 +63,9 @@ cuda = ["torch==2.8.*", "torchaudio==2.8.*"]
 cpu = ["torch==2.8.*", "torchaudio==2.8.*"]
 # App de escritorio (`podcast-tts desktop`): ventana nativa con WebView2 en lugar del navegador.
 desktop = ["pywebview>=5"]
+# Servidor MCP (`podcast-tts mcp`): expone la herramienta a asistentes de IA (Claude Desktop,
+# Claude Code, Cursor, VS Code...) por stdio. Ver docs/MCP.md.
+mcp = ["mcp>=1.12,<2"]
 dev = ["pytest"]
 
 [project.urls]
@@ -72,6 +75,7 @@ Releases = "https://github.com/enriquevelmai/AudioGeneration/releases"
 
 [project.scripts]
 podcast-tts = "podcast_tts.cli:main"
+podcast-tts-mcp = "podcast_tts.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/podcast_tts"]

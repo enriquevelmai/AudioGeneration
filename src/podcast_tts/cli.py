@@ -9,6 +9,7 @@ Ejemplos::
     python -m podcast_tts voices remove ana
     python -m podcast_tts ui [--port 7860] [--host 127.0.0.1] [--share] [--auth usuario:clave]
     python -m podcast_tts desktop [--browser] [--debug]
+    python -m podcast_tts mcp [--output-dir DIR]   (servidor MCP por stdio para asistentes de IA)
     python -m podcast_tts engines [--json]
     python -m podcast_tts config show | set OPENAI_API_KEY | unset OPENAI_API_KEY
     python -m podcast_tts voices add nova --engine openai --provider-voice-id nova --lang es
@@ -287,6 +288,17 @@ def _cmd_desktop(args: argparse.Namespace) -> int:
     return run_from_args(args)
 
 
+def _cmd_mcp(args: argparse.Namespace) -> int:
+    from .mcp_server import ServerConfig, run
+
+    kwargs: dict[str, object] = {}
+    if args.output_dir:
+        kwargs["output_dir"] = Path(args.output_dir)
+    if args.voices_dir:
+        kwargs["voices_dir"] = Path(args.voices_dir)
+    return run(ServerConfig(**kwargs))  # type: ignore[arg-type]
+
+
 def _cmd_models_list(args: argparse.Namespace) -> int:
     from .models import MODELS
 
@@ -465,6 +477,13 @@ def build_parser() -> argparse.ArgumentParser:
                         help="abre la app de escritorio (ventana nativa; requiere el extra desktop)")
     desktop_args(dk)
     dk.set_defaults(func=_cmd_desktop)
+
+    mc = sub.add_parser("mcp", parents=[voices_dir],
+                        help="servidor MCP (stdio) para Claude Desktop, Claude Code, Cursor, "
+                             "VS Code... (requiere el extra mcp)")
+    mc.add_argument("--output-dir", default=None,
+                    help="carpeta de salida (por defecto $PODCAST_TTS_OUTPUT_DIR o <proyecto>/output)")
+    mc.set_defaults(func=_cmd_mcp)
 
     m = sub.add_parser("models", help="lista, comprueba y descarga los modelos de los motores locales")
     msub = m.add_subparsers(dest="models_command", required=True, metavar="acción")
