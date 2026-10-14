@@ -25,13 +25,14 @@
 param([switch]$Copy, [switch]$NoReplace)
 $ErrorActionPreference = 'Stop'
 
-$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+# -LiteralPath en todo: con -Path, los [ ] de una ruta se tratan como comodines.
+$Root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $Source = Join-Path $Root 'skill\podcast-tts'
 $SkillsDir = Join-Path $env:USERPROFILE '.claude\skills'
 $Target = Join-Path $SkillsDir 'podcast-tts'
 
-if (-not (Test-Path (Join-Path $Source 'SKILL.md'))) { throw "No existe $Source\SKILL.md" }
-New-Item -ItemType Directory -Force -Path $SkillsDir | Out-Null
+if (-not (Test-Path -LiteralPath (Join-Path $Source 'SKILL.md'))) { throw "No existe $Source\SKILL.md" }
+[void][IO.Directory]::CreateDirectory($SkillsDir)
 
 $item = Get-Item -LiteralPath $Target -Force -ErrorAction SilentlyContinue
 if ($item) {
@@ -62,7 +63,7 @@ if ($item) {
 }
 
 if ($Copy) {
-    Copy-Item -Recurse -Path $Source -Destination $Target
+    Copy-Item -Recurse -LiteralPath $Source -Destination $Target
     [Environment]::SetEnvironmentVariable('PODCAST_TTS_HOME', $Root, 'User')
     $env:PODCAST_TTS_HOME = $Root
     Write-Host "Skill copiada en $Target (vuelve a ejecutar con -Copy tras cada cambio)."
@@ -72,5 +73,5 @@ if ($Copy) {
     Write-Host "Junction creada: $Target -> $Source"
 }
 
-if (-not (Test-Path (Join-Path $Target 'SKILL.md'))) { throw "Instalacion fallida: no se lee $Target\SKILL.md" }
+if (-not (Test-Path -LiteralPath (Join-Path $Target 'SKILL.md'))) { throw "Instalacion fallida: no se lee $Target\SKILL.md" }
 Write-Host 'OK: SKILL.md accesible.'

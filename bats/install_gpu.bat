@@ -6,11 +6,27 @@ REM
 REM  Uso:   bats\install_gpu.bat        bats\install_gpu.bat /y  (sin pause)
 REM         bats\install_gpu.bat /force (aunque no se detecte nvidia-smi)
 REM ====================================================================
-setlocal EnableExtensions EnableDelayedExpansion
-cd /d "%~dp0.."
+setlocal EnableExtensions DisableDelayedExpansion
+REM El cd va ANTES de habilitar la expansion retardada: con ella, los "!" de la ruta se pierden.
+pushd "%~dp0.." 2>nul || (
+    echo ERROR: no se puede abrir la carpeta del proyecto: "%~dp0.."
+    echo   Si esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    if /i not "%~1"=="/y" pause
+    exit /b 1
+)
+if not exist "pyproject.toml" (
+    echo ERROR: no se encuentra pyproject.toml en "%CD%".
+    echo   - Si has abierto el zip sin extraerlo, extrae antes todo su contenido
+    echo     ^(clic derecho sobre el zip ^> Extraer todo^) y ejecuta el .bat desde ahi.
+    echo   - Si la carpeta esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    popd
+    if /i not "%~1"=="/y" pause
+    exit /b 1
+)
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 set "COQUI_TOS_AGREED=1"
+set "PYTHONPATH=%CD%\src"
 set "NONINTERACTIVE=0"
 set "FORCE=0"
 if "%PODCAST_TTS_NONINTERACTIVE%"=="1" set "NONINTERACTIVE=1"
@@ -47,9 +63,10 @@ if errorlevel 1 (
 )
 
 REM --------------------------------------------------------------------
+setlocal EnableDelayedExpansion
 echo.
 echo [2/3] Instalando PyTorch CUDA 12.6 ^(sustituye a la variante CPU, ~2.5 GB^)...
-set "EXTRAS=local dev"
+set "EXTRAS=local"
 if exist ".venv\podcast-tts-extras.txt" set /p EXTRAS=<".venv\podcast-tts-extras.txt"
 set "NEW_EXTRAS="
 for %%e in (!EXTRAS!) do (
@@ -70,6 +87,7 @@ if errorlevel 1 (
     goto fail
 )
 > ".venv\podcast-tts-extras.txt" echo !NEW_EXTRAS!
+".venv\Scripts\python.exe" -I -S scripts\fix_editable_pth.py
 
 REM --------------------------------------------------------------------
 echo.
@@ -82,10 +100,12 @@ if errorlevel 1 (
 echo.
 echo  Listo: los motores usaran la GPU. Abre la app con bats\run.bat
 if not "%NONINTERACTIVE%"=="1" pause
-endlocal
+popd
+endlocal & endlocal
 exit /b 0
 
 :fail
 if not "%NONINTERACTIVE%"=="1" pause
-endlocal
+popd
+endlocal & endlocal
 exit /b 1

@@ -3,44 +3,67 @@ REM ====================================================================
 REM  podcast-tts - Instalacion (entorno aislado .venv gestionado por uv).
 REM
 REM  - Instala uv si falta (instalador oficial de astral, sin admin).
-REM  - Instala Python 3.11 con uv.
+REM  - Instala Python 3.11 con uv (si no hay ya uno utilizable).
 REM  - Detecta GPU NVIDIA (nvidia-smi) y elige torch CUDA o CPU.
 REM  - Instala tambien la app de escritorio (extra desktop: pywebview).
 REM  - Ofrece descargar ya los modelos y, si usas Claude Code, la skill.
-REM  - Ofrece crear accesos directos "AudioGeneration" (Escritorio y menu Inicio).
+REM  - Crea accesos directos "AudioGeneration" (Escritorio y menu Inicio).
 REM
-REM  Uso:   bats\install.bat            (interactivo)
-REM         bats\install.bat /y         (sin preguntas ni pause; responde si)
-REM         bats\install.bat /cpu       (fuerza torch CPU aunque haya GPU)
-REM         bats\install.bat /cuda      (fuerza torch CUDA)
+REM  Uso:   bats\install.bat               (interactivo)
+REM         bats\install.bat /y            (sin preguntas ni pause; responde si a todo,
+REM                                         accesos directos incluidos)
+REM         bats\install.bat /cpu          (fuerza torch CPU aunque haya GPU)
+REM         bats\install.bat /cuda         (fuerza torch CUDA)
+REM         bats\install.bat /noshortcuts  (no crea accesos directos)
+REM         bats\install.bat /dev          (anade el extra dev: pytest, para desarrollo)
 REM  Variables opcionales:
 REM         PODCAST_TTS_NONINTERACTIVE=1   igual que /y
 REM         PODCAST_TTS_VARIANT=cpu|cuda   fuerza la variante de torch
 REM         PODCAST_TTS_DOWNLOAD_MODELS=0|1, PODCAST_TTS_INSTALL_SKILL=0|1
-REM         PODCAST_TTS_SHORTCUTS=0|1      accesos directos (en modo /y solo si vale 1)
+REM         PODCAST_TTS_SHORTCUTS=0|1      accesos directos (0 = no crearlos)
 REM ====================================================================
-setlocal EnableExtensions
-cd /d "%~dp0.."
+setlocal EnableExtensions DisableDelayedExpansion
+pushd "%~dp0.." 2>nul || (
+    echo ERROR: no se puede abrir la carpeta del proyecto: "%~dp0.."
+    echo   Si esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    if /i not "%~1"=="/y" pause
+    exit /b 1
+)
+if not exist "pyproject.toml" (
+    echo ERROR: no se encuentra pyproject.toml en "%CD%".
+    echo   - Si has abierto el zip sin extraerlo, extrae antes todo su contenido
+    echo     ^(clic derecho sobre el zip ^> Extraer todo^) y ejecuta el .bat desde ahi.
+    echo   - Si la carpeta esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    popd
+    if /i not "%~1"=="/y" pause
+    exit /b 1
+)
 set "ROOT=%CD%"
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 set "COQUI_TOS_AGREED=1"
+REM Por si el .pth de la instalacion editable no se lee bien (rutas con acentos).
+set "PYTHONPATH=%ROOT%\src"
 
 set "NONINTERACTIVE=0"
 if "%PODCAST_TTS_NONINTERACTIVE%"=="1" set "NONINTERACTIVE=1"
 set "VARIANT=%PODCAST_TTS_VARIANT%"
+set "WITH_DEV=0"
+set "NOSHORTCUTS=0"
 :parse_args
 if "%~1"=="" goto args_done
 if /i "%~1"=="/y" set "NONINTERACTIVE=1"
 if /i "%~1"=="-y" set "NONINTERACTIVE=1"
 if /i "%~1"=="/cpu" set "VARIANT=cpu"
 if /i "%~1"=="/cuda" set "VARIANT=cuda"
+if /i "%~1"=="/dev" set "WITH_DEV=1"
+if /i "%~1"=="/noshortcuts" set "NOSHORTCUTS=1"
 shift
 goto parse_args
 :args_done
 
 echo ====================================================================
-echo  podcast-tts - instalacion en %ROOT%
+echo  podcast-tts - instalacion en "%ROOT%"
 echo ====================================================================
 
 REM --------------------------------------------------------------------
@@ -61,18 +84,27 @@ echo   uv: %UV%
 
 REM --------------------------------------------------------------------
 echo.
-echo [2/8] Instalando Python 3.11 ^(gestionado por uv^)...
-"%UV%" python install 3.11
-if errorlevel 1 (
-    REM Puede fallar solo el enlace de version menor aunque Python ya este instalado:
-    REM si uv encuentra un 3.11 utilizable, se sigue adelante.
-    "%UV%" python find 3.11 >nul 2>nul
-    if errorlevel 1 (
-        echo ERROR instalando Python 3.11 con uv.
-        goto fail
-    )
-    echo   AVISO: uv python install devolvio error, pero hay un Python 3.11 utilizable. Se continua.
+echo [2/8] Python 3.11 ^(gestionado por uv^)...
+"%UV%" python find 3.11 >nul 2>nul
+if not errorlevel 1 (
+    echo   Ya hay un Python 3.11 utilizable.
+    goto python_done
 )
+echo   Descargando Python 3.11 ^(unos 30 MB^)...
+set "UVPY_LOG=%TEMP%\podcast-tts-uv-python.log"
+"%UV%" python install 3.11 >"%UVPY_LOG%" 2>&1
+set "UVPY_ERR=%errorlevel%"
+"%UV%" python find 3.11 >nul 2>nul
+if errorlevel 1 (
+    type "%UVPY_LOG%"
+    echo ERROR instalando Python 3.11 con uv ^(ver arriba^).
+    goto fail
+)
+REM uv puede avisar "Missing expected target directory for Python minor version link"
+REM aunque Python quede instalado y funcione: no se muestra para no asustar.
+if not "%UVPY_ERR%"=="0" echo   Python 3.11 instalado ^(uv aviso de un detalle menor sin importancia^).
+if "%UVPY_ERR%"=="0" echo   Python 3.11 instalado.
+:python_done
 
 REM --------------------------------------------------------------------
 echo.
@@ -93,16 +125,21 @@ if /i "%VARIANT%"=="cuda" (
 )
 
 REM --------------------------------------------------------------------
+set "EXTRAS=local %VARIANT% desktop"
+if "%WITH_DEV%"=="1" set "EXTRAS=local %VARIANT% desktop dev"
+set "EXTRA_ARGS=--extra local --extra %VARIANT% --extra desktop"
+if "%WITH_DEV%"=="1" set "EXTRA_ARGS=%EXTRA_ARGS% --extra dev"
 echo.
-echo [4/8] Creando .venv e instalando dependencias ^(local + %VARIANT% + desktop^)...
+echo [4/8] Creando .venv e instalando dependencias ^(%EXTRAS%^)...
 echo   La primera vez descarga varios GB; las siguientes usa la cache de uv.
-"%UV%" sync --locked --python 3.11 --extra local --extra %VARIANT% --extra desktop --extra dev
+"%UV%" sync --locked --python 3.11 %EXTRA_ARGS%
 if errorlevel 1 (
     echo ERROR en uv sync. Revisa la salida de arriba.
     goto fail
 )
-> ".venv\podcast-tts-extras.txt" echo local %VARIANT% desktop dev
-echo   Extras registrados en .venv\podcast-tts-extras.txt: local %VARIANT% desktop dev
+> ".venv\podcast-tts-extras.txt" echo %EXTRAS%
+echo   Extras registrados en .venv\podcast-tts-extras.txt: %EXTRAS%
+".venv\Scripts\python.exe" -I -S scripts\fix_editable_pth.py
 
 REM --------------------------------------------------------------------
 echo.
@@ -132,7 +169,7 @@ REM --------------------------------------------------------------------
 echo.
 echo [7/8] Skill de Claude Code...
 if not exist "%USERPROFILE%\.claude\" (
-    echo   No se encuentra %USERPROFILE%\.claude: Claude Code no parece instalado. Omitido.
+    echo   No se encuentra la carpeta .claude del usuario: Claude Code no parece instalado. Omitido.
     goto skill_done
 )
 set "DO_SKILL=%PODCAST_TTS_INSTALL_SKILL%"
@@ -153,10 +190,10 @@ REM --------------------------------------------------------------------
 echo.
 echo [8/8] Accesos directos "AudioGeneration" ^(Escritorio y menu Inicio^)...
 set "DO_SHORTCUTS=%PODCAST_TTS_SHORTCUTS%"
-if not defined DO_SHORTCUTS if "%NONINTERACTIVE%"=="1" set "DO_SHORTCUTS=0"
+if "%NOSHORTCUTS%"=="1" set "DO_SHORTCUTS=0"
 if not defined DO_SHORTCUTS call :ask "Crear accesos directos en el Escritorio y en el menu Inicio" DO_SHORTCUTS
 if "%DO_SHORTCUTS%"=="1" (
-    call "%~dp0create_shortcuts.bat" /y
+    call "%ROOT%\bats\create_shortcuts.bat" /y
     if errorlevel 1 echo AVISO: no se pudieron crear los accesos directos ^(ver arriba^).
 ) else (
     echo   Omitido. Mas tarde: bats\create_shortcuts.bat
@@ -164,16 +201,18 @@ if "%DO_SHORTCUTS%"=="1" (
 
 echo.
 echo ====================================================================
-if defined ENV_PROBLEMS (
-    echo  Instalado con avisos: revisa los [FAIL] de check_env.py.
+if defined ENV_PROBLEMS echo  Instalado con avisos: revisa los [FAIL] de check_env.py.
+if not defined ENV_PROBLEMS echo  Listo.
+if exist "AudioGeneration.exe" (
+    echo  Abrir la app:      AudioGeneration.exe ^(o el acceso directo AudioGeneration^)
 ) else (
-    echo  Listo. App de escritorio:        bats\run.bat
+    echo  Abrir la app:      bats\run.bat ^(o el acceso directo AudioGeneration^)
 )
-echo  En el navegador:                 bats\run_web.bat
-echo  Lanzador AudioGeneration.exe:    bats\build_launcher.bat
-echo  Actualizar:                      bats\update.bat
+echo  En el navegador:   bats\run_web.bat
+echo  Actualizar:        bats\update.bat
 echo ====================================================================
 if not "%NONINTERACTIVE%"=="1" pause
+popd
 if defined ENV_PROBLEMS (
     endlocal
     exit /b 2
@@ -183,6 +222,7 @@ exit /b 0
 
 :fail
 if not "%NONINTERACTIVE%"=="1" pause
+popd
 endlocal
 exit /b 1
 

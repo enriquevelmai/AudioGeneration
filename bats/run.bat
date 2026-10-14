@@ -10,11 +10,27 @@ REM  Uso:   bats\run.bat              (ventana de escritorio, sin consola)
 REM         bats\run.bat /console     (igual, pero el registro sale en esta consola)
 REM  Argumentos extra se pasan a "podcast_tts desktop" (p.ej. --debug).
 REM ====================================================================
-setlocal EnableExtensions
-cd /d "%~dp0.."
+setlocal EnableExtensions DisableDelayedExpansion
+pushd "%~dp0.." 2>nul || (
+    echo ERROR: no se puede abrir la carpeta del proyecto: "%~dp0.."
+    echo   Si esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    pause
+    exit /b 1
+)
+if not exist "pyproject.toml" (
+    echo ERROR: no se encuentra pyproject.toml en "%CD%".
+    echo   - Si has abierto el zip sin extraerlo, extrae antes todo su contenido
+    echo     ^(clic derecho sobre el zip ^> Extraer todo^) y ejecuta el .bat desde ahi.
+    echo   - Si la carpeta esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    popd
+    pause
+    exit /b 1
+)
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 set "COQUI_TOS_AGREED=1"
+REM Por si el .pth de la instalacion editable no se lee bien (rutas con acentos).
+set "PYTHONPATH=%CD%\src"
 
 set "CONSOLE=0"
 if /i "%~1"=="/console" (
@@ -24,6 +40,7 @@ if /i "%~1"=="/console" (
 
 if not exist ".venv\Scripts\python.exe" (
     echo No existe el entorno .venv. Ejecuta primero: bats\install.bat
+    popd
     pause
     exit /b 1
 )
@@ -33,6 +50,7 @@ if errorlevel 1 (
     echo AVISO: falta pywebview ^(extra "desktop"^): se abre la UI en el navegador.
     echo        Para la app de escritorio: bats\update.bat  ^(o bats\install.bat^)
     echo.
+    popd
     endlocal
     call "%~dp0run_web.bat"
     exit /b %errorlevel%
@@ -52,9 +70,11 @@ if "%CONSOLE%"=="1" (
     if errorlevel 1 (
         echo.
         echo La app termino con error ^(ver arriba^). Diagnostico: .venv\Scripts\python.exe scripts\check_env.py
+        popd
         pause
         exit /b 1
     )
+    popd
     endlocal
     exit /b 0
 )
@@ -62,5 +82,6 @@ if "%CONSOLE%"=="1" (
 set "PYW=.venv\Scripts\pythonw.exe"
 if not exist "%PYW%" set "PYW=.venv\Scripts\python.exe"
 start "" "%PYW%" -m podcast_tts desktop%ARGS%
+popd
 endlocal
 exit /b 0
