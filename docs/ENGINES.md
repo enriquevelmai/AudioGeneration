@@ -1,35 +1,49 @@
 # Motores TTS: instalación y API verificada (2026-10-12)
 
 Entorno probado: Windows 11 Pro, RTX 4080 SUPER 16 GB (driver 610.88, CUDA UMD 13.3),
-Python 3.11.9 (`C:\Python311\python.exe`), uv 0.12.5, ffmpeg 7.1 (chocolatey, build estática).
+Python 3.11.9, uv 0.12.5, ffmpeg 7.1 (chocolatey, build estática). También probado en modo CPU
+(extra `cpu`).
 
 Todo está en un único venv (`.venv`): **no hace falta `.venv-xtts`**. F5-TTS y coqui-tts conviven
 con los pins descritos abajo.
 
 ## 1. Instalación
 
-Desde cero (idempotente; reutiliza `.venv` si existe):
+La forma soportada es `bats\install.bat` (idempotente; reutiliza `.venv` si existe). Detecta GPU
+NVIDIA con `nvidia-smi` y ejecuta, según el caso:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\setup.ps1            # deps + check_env
-powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Smoke     # + descarga modelos y genera output\smoke_*.wav
-powershell -ExecutionPolicy Bypass -File scripts\setup.ps1 -Recreate  # borra y recrea .venv
-```
-
-Equivalente manual:
-
-```powershell
-uv venv --python 3.11 .venv
-uv sync --extra dev            # instala exactamente uv.lock (torch 2.8.0+cu126 desde download.pytorch.org/whl/cu126)
+uv sync --locked --python 3.11 --extra local --extra cuda --extra dev   # GPU NVIDIA (torch 2.8.0+cu126)
+uv sync --locked --python 3.11 --extra local --extra cpu --extra dev    # sin GPU (torch 2.8.0+cpu)
 .venv\Scripts\python.exe scripts\check_env.py
 ```
 
-Re-resolver dependencias: `uv lock --python 3.11` y luego `uv sync --extra dev`.
-`uv pip install -r pyproject.toml --extra dev` también funciona (respeta `[tool.uv.sources]`).
-`uv sync` instala además el propio paquete `podcast-tts` en modo editable (`src/podcast_tts`).
+Los extras elegidos quedan en `.venv\podcast-tts-extras.txt`; `bats\update.bat` los reutiliza y
+`bats\install_gpu.bat` cambia `cpu` por `cuda` (uv solo sustituye torch/torchaudio).
+`uv sync --extra dev` a secas instala solo el núcleo (sin torch): parser, motor `dummy`, CLI, UI y
+tests rápidos; es lo que usa la CI.
 
-El índice de PyTorch CUDA se declara en `pyproject.toml` como índice `explicit` (`pytorch-cu126`) y solo
-se usa para `torch` / `torchaudio`. El lock se resuelve solo para `sys_platform == 'win32'`.
+Estructura de `pyproject.toml`:
+
+- `dependencies` (núcleo, sin torch): numpy, pydub, gradio, pyyaml, scipy, pyloudnorm, huggingface-hub.
+- `local`: f5-tts, coqui-tts, transformers<5, torch/torchaudio 2.8, soundfile.
+- `cuda` / `cpu`: torch/torchaudio 2.8 con `[tool.uv.sources]` apuntando a los índices `explicit`
+  `pytorch-cu126` (`download.pytorch.org/whl/cu126`) o `pytorch-cpu` (`.../whl/cpu`), y
+  `[tool.uv] conflicts = [[{extra="cpu"}, {extra="cuda"}]]` (patrón oficial de uv para PyTorch).
+  Con `local` y sin `cuda`/`cpu`, torch viene de PyPI (CPU en Windows).
+- `dev`: pytest.
+- `environments = ["sys_platform == 'win32'", "sys_platform == 'linux'"]`: Windows para el uso real y
+  Linux para la CI. El lock contiene tres variantes de torch (PyPI, `+cpu`, `+cu126`).
+
+Re-resolver dependencias: `uv lock --python 3.11` y luego `bats\update.bat` (o `uv sync` con los extras).
+`uv sync` instala además el propio paquete `podcast-tts` en modo editable (`src/podcast_tts`) y el
+ejecutable `.venv\Scripts\podcast-tts.exe`.
+
+Dispositivo: `podcast_tts.device.select_device()` elige `cuda` si `torch.cuda.is_available()` y si no
+`cpu` (avisa por logging de que irá lento); `PODCAST_TTS_DEVICE=cpu|cuda|auto` lo fuerza.
+
+Modelos: no se versionan. `podcast-tts models list|status|download|update` (`src/podcast_tts/models.py`,
+solo depende de `huggingface_hub`) los gestiona en las cachés estándar (HF y coqui); ver README.
 
 ### Pins y por qué
 
@@ -200,7 +214,9 @@ Bajo nivel: `tts.synthesizer.tts_model` es `Xtts`; los latentes de cada speaker 
 - Límite de caracteres por frase: `es` 239, `en` 250 (avisa si se excede). Con `split_sentences=True`
   (por defecto) el texto se trocea por frases; conviene pasar párrafos cortos.
 - Caché del modelo: `%LOCALAPPDATA%\tts\tts_models--multilingual--multi-dataset--xtts_v2` (1.8 GB),
-  es decir `C:\Users\enriq\AppData\Local\tts\...`. Se cambia con `TTS_HOME` (o `XDG_DATA_HOME`).
+  (`<TTS_HOME>\tts\...` si se define `TTS_HOME`, o `XDG_DATA_HOME`). `podcast-tts models download xtts`
+  baja los mismos 5 ficheros del repo HF `coqui/XTTS-v2` a esa carpeta con `huggingface_hub`; al cargar,
+  coqui ve `hash.md5` correcto y no vuelve a descargar.
 - Licencia del modelo: Coqui Public Model License (CPML, uso no comercial).
 
 Speakers integrados (58, en el orden que devuelve `tts.speakers`):
@@ -235,7 +251,7 @@ XTTS es estocástico (`do_sample=True`): la duración varía entre ejecuciones.
 1. **Consola cp1252 y Unicode**: `print()` de nombres como `Eugenio Mataracı` lanza
    `UnicodeEncodeError: 'charmap' codec can't encode character '\u0131'` cuando stdout es una tubería
    (stdout.encoding = cp1252). Ejecutar con `PYTHONIOENCODING=utf-8` (o `PYTHONUTF8=1`), o hacer
-   `sys.stdout.reconfigure(encoding="utf-8")` en el entrypoint. `setup.ps1` exporta ambas variables.
+   `sys.stdout.reconfigure(encoding="utf-8")` en el entrypoint. Los `.bat` de `bats/` y los wrappers de la skill exportan ambas variables.
 2. **torchaudio >= 2.9 / torchcodec**: ver la tabla de pins. No subir torch por encima de 2.8 salvo que se
    instalen las DLL compartidas de FFmpeg (build "shared" en el PATH) o se sustituya `torchaudio.load`
    por `soundfile`.
@@ -255,7 +271,11 @@ XTTS es estocástico (`do_sample=True`): la duración varía entre ejecuciones.
 
 ## 5. Scripts
 
-- `scripts/setup.ps1`: instalación reproducible (idempotente); `-Smoke` genera los WAV de prueba; `-Recreate` rehace `.venv`.
-- `scripts/check_env.py`: verifica Python 3.11, ffmpeg, CUDA/GPU, backend de torchaudio e imports de ambos motores (exit 0/1, no descarga nada).
+- `bats/install.bat`, `bats/update.bat`, `bats/install_gpu.bat`, `bats/run.bat`: instalación, actualización,
+  cambio CPU -> CUDA y arranque de la UI (ver sección 1).
+- `scripts/setup.ps1`: compatibilidad; llama a `bats\install.bat /y` (`-Smoke` genera los WAV de prueba; `-Recreate` rehace `.venv`).
+- `scripts/check_env.py`: verifica por capas (núcleo, `local`, `cuda`/`cpu`): Python 3.11, ffmpeg, paquetes del núcleo,
+  que el núcleo no importe torch y, si está el extra `local`, torch 2.8, backend de torchaudio, CUDA e imports de
+  ambos motores. Exit 0 si lo instalado es coherente (solo núcleo también vale), 1 si no. No descarga nada.
 - `scripts/smoke_f5.py`: genera `output/smoke_f5_es.wav` y `output/smoke_f5_en.wav`.
 - `scripts/smoke_xtts.py`: genera `output/smoke_xtts_es.wav` y `output/smoke_xtts_en.wav` y lista los speakers.
