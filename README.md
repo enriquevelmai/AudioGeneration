@@ -27,7 +27,7 @@ voices, music and sound effects, cloning voices from a 10-second clip, entirely 
 <table align="center">
   <tr>
     <td align="center"><img src="docs/img/voices.png" alt="Voices tab: available voices, selected voice and voice test" width="280"><br><sub>Voices</sub></td>
-    <td align="center"><img src="docs/img/settings.png" alt="Settings tab: API keys and table of engines and licenses" width="280"><br><sub>Settings: engines and licenses</sub></td>
+    <td align="center"><img src="docs/img/settings.png" alt="Settings tab: interface language, API keys and table of engines and licenses" width="280"><br><sub>Settings: language, API keys and licenses</sub></td>
     <td align="center"><img src="docs/img/desktop-loading.png" alt="Desktop app loading screen" width="280"><br><sub>Desktop app starting</sub></td>
   </tr>
 </table>

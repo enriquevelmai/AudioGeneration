@@ -28,7 +28,7 @@ propio PC.
 <table align="center">
   <tr>
     <td align="center"><img src="docs/img/voices.png" alt="Pestaña Voces: voces disponibles, voz seleccionada y prueba de voz" width="280"><br><sub>Voces</sub></td>
-    <td align="center"><img src="docs/img/settings.png" alt="Pestaña Ajustes: claves de API y tabla de motores y licencias" width="280"><br><sub>Ajustes: motores y licencias</sub></td>
+    <td align="center"><img src="docs/img/settings.png" alt="Pestaña Ajustes: idioma de la interfaz, claves de API y tabla de motores y licencias" width="280"><br><sub>Ajustes: idioma, claves de API y licencias</sub></td>
     <td align="center"><img src="docs/img/desktop-loading.png" alt="Pantalla de arranque de la app de escritorio" width="280"><br><sub>Arranque de la app de escritorio</sub></td>
   </tr>
 </table>
