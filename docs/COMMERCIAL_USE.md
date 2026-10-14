@@ -75,7 +75,7 @@ Three ways to store a key in `.env`:
   python -m podcast_tts config unset OPENAI_API_KEY
   ```
 
-- UI: tab **Ajustes** → choose the variable, paste the key, **Guardar clave**.
+- UI: **Settings** tab → choose the variable, paste the key, **Save key**.
 - Manually: copy `.env.example` to `.env` and fill in the values.
 
 Cloud voices do not need a `ref.wav`: they point to a voice of the provider with
@@ -150,7 +150,7 @@ voices are AI-generated.
 
 ### Errors
 
-HTTP errors are reported in Spanish with the provider's message (keys are always redacted):
+HTTP errors are reported with the provider's message (keys are always redacted):
 401 invalid key, 402/403 plan or permission problems, 404 wrong voice/model/region, 429 rate
 limit or quota. 429 and 5xx responses and network errors are retried twice with exponential
 backoff (honoring `Retry-After`).
@@ -159,9 +159,9 @@ backoff (honoring `Retry-After`).
 
 The engine used for each sentence is resolved with this priority:
 
-1. `--engine` in the CLI (or the "Motor" selector in the UI) — forces one engine for the whole
+1. `--engine` in the CLI (or the "Engine" selector in the UI) — forces one engine for the whole
    script;
-2. the `engine=` attribute of a voice tag: `[voz:ana engine=openai]`;
+2. the `engine=` attribute of a voice tag: `[voice:ana engine=openai]`;
 3. the script front matter: `engine: azure`;
 4. the voice's own `engine` in `voice.json`;
 5. the default (`f5`).
@@ -174,8 +174,8 @@ So the simplest commercial setup is to create cloud voices (their `voice.json` a
 title: My commercial episode
 lang: es
 ---
-[voz:alvaro] Bienvenidos al episodio.
-[voz:nova] Hoy hablamos de...
+[voice:alvaro] Bienvenidos al episodio.
+[voice:nova] Hoy hablamos de...
 ```
 
 Be careful when mixing: if a script uses one local voice (`f5`/`xtts`) next to cloud voices,

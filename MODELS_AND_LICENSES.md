@@ -118,7 +118,7 @@ installer can install with `winget`, is a separate program under its own LGPL/GP
 - Every engine declares its license (`LicenseInfo`) and `podcast-tts engines` shows it.
 - When a script uses a non-commercial engine, `podcast-tts generate` prints a license notice
   (hide it with `--no-license-notice`) and the app shows a discreet notice in the generation tab.
-- The **Ajustes** (settings) tab of the app lists every engine with its license and whether it
+- The **Settings** tab of the app lists every engine with its license and whether it
   allows commercial use.
 
 Before publishing audio commercially, go through the checklist in

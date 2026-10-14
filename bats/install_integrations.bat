@@ -1,21 +1,21 @@
 @echo off
 REM ====================================================================
-REM  podcast-tts - Integraciones con asistentes de IA (servidor MCP).
+REM  podcast-tts - Integrations with AI assistants (MCP server).
 REM
-REM  - Instala el extra mcp si falta (uv sync con los mismos extras).
-REM  - Claude Code: skill podcast-tts + "claude mcp add --scope user podcast-tts".
-REM  - Claude Desktop: entrada podcast-tts en claude_desktop_config.json
-REM    (fusiona sin borrar otras entradas; copia .bak antes de escribir).
-REM  - Otros clientes (Cursor, VS Code...): imprime el JSON para pegar.
-REM  Es idempotente: se puede ejecutar las veces que haga falta.
+REM  - Installs the mcp extra if missing (uv sync with the same extras).
+REM  - Claude Code: podcast-tts skill + "claude mcp add --scope user podcast-tts".
+REM  - Claude Desktop: podcast-tts entry in claude_desktop_config.json
+REM    (merges without deleting other entries; writes a .bak copy first).
+REM  - Other clients (Cursor, VS Code...): prints the JSON to paste.
+REM  It is idempotent: it can be run as many times as needed.
 REM
-REM  Uso:   bats\install_integrations.bat                  (detecta y pregunta)
-REM         bats\install_integrations.bat /y               (todo lo detectado, sin preguntas)
-REM         bats\install_integrations.bat /claude-code     (solo Claude Code)
-REM         bats\install_integrations.bat /claude-desktop  (solo Claude Desktop)
-REM         bats\install_integrations.bat /print           (solo imprime el JSON)
-REM         bats\install_integrations.bat --uninstall      (quita el registro)
-REM  Pruebas: --dry-run (no cambia nada), --config-path FICHERO (otro config de Desktop)
+REM  Usage: bats\install_integrations.bat                  (detects and asks)
+REM         bats\install_integrations.bat /y               (everything detected, no questions)
+REM         bats\install_integrations.bat /claude-code     (Claude Code only)
+REM         bats\install_integrations.bat /claude-desktop  (Claude Desktop only)
+REM         bats\install_integrations.bat /print           (only prints the JSON)
+REM         bats\install_integrations.bat --uninstall      (removes the registration)
+REM  Testing: --dry-run (changes nothing), --config-path FILE (another Desktop config)
 REM ====================================================================
 setlocal EnableExtensions
 cd /d "%~dp0.."
@@ -31,7 +31,7 @@ for %%a in (%*) do (
 )
 
 if not exist ".venv\Scripts\python.exe" (
-    echo ERROR: no existe .venv. Ejecuta primero bats\install.bat
+    echo ERROR: .venv does not exist. Run bats\install.bat first
     if not "%NONINTERACTIVE%"=="1" pause
     endlocal
     exit /b 1

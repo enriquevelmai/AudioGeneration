@@ -1,7 +1,7 @@
-"""Smoke test de F5-TTS: sintetiza una frase en castellano y otra en ingles.
+"""F5-TTS smoke test: synthesizes one sentence in Spanish and another in English.
 
-Uso:  .venv\Scripts\python.exe scripts\smoke_f5.py
-Salida: output/smoke_f5_es.wav, output/smoke_f5_en.wav (24 kHz mono)
+Usage:  .venv\Scripts\python.exe scripts\smoke_f5.py
+Output: output/smoke_f5_es.wav, output/smoke_f5_en.wav (24 kHz mono)
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def main() -> None:
     print("CUDA:", torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else "")
     t0 = time.perf_counter()
     tts = F5TTS(model="F5TTS_v1_Base", device="cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Carga del modelo: {time.perf_counter() - t0:.1f}s  (sample rate {tts.target_sample_rate} Hz)")
+    print(f"Model load: {time.perf_counter() - t0:.1f}s  (sample rate {tts.target_sample_rate} Hz)")
 
     for lang, text in SENTENCES.items():
         out = OUT / f"smoke_f5_{lang}.wav"
@@ -46,7 +46,7 @@ def main() -> None:
         )
         dt = time.perf_counter() - t0
         dur = len(wav) / sr
-        print(f"[{lang}] {out.name}: {dur:.2f}s de audio en {dt:.2f}s (RTF {dt / dur:.3f}), sr={sr}")
+        print(f"[{lang}] {out.name}: {dur:.2f}s of audio in {dt:.2f}s (RTF {dt / dur:.3f}), sr={sr}")
 
 
 if __name__ == "__main__":

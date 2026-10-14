@@ -10,9 +10,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Security
 
 - The UI refuses to start with `--host` other than loopback or with `--share` unless
-  `--auth user:password` (or `PODCAST_TTS_AUTH`) is set. In that remote mode the Ajustes tab is
+  `--auth user:password` (or `PODCAST_TTS_AUTH`) is set. In that remote mode the Settings tab is
   hidden and music/sfx paths must be relative; internal events are private in the Gradio API.
-- `[voz:../x]` can no longer read outside `voices/`; Windows reserved names (CON, NUL...) are
+- `[voice:../x]` can no longer read outside `voices/`; Windows reserved names (CON, NUL...) are
   rejected as voice names. The launcher only opens release URLs of this repository.
 
 ### Fixed
@@ -35,6 +35,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- English is now the primary language of the project: documentation, CLI help and messages, UI
+  labels and default messages are in English. The documentation in `docs/` and the skill were
+  translated to English; README.es.md remains as the full Spanish translation of the README.
+- The UI and CLI messages are available in Spanish with `PODCAST_TTS_LANG=es` or under
+  **Settings → Language** in the UI.
+- English script tags are now canonical (`[voice:]`, `[pause:]`, `[music:]`, `bg`/`background`,
+  `[music:stop]`, `[title:]`); the Spanish tags (`[voz:]`, `[pausa:]`, `[musica:]`/`[música:]`,
+  `fondo`, `fin`/`parar`, `[titulo:]`/`[título:]`) are still accepted as aliases.
+- `examples/english_episode.md` is the main example, and all the example scripts use the English
+  tags.
+- The skill's script reference was renamed to `references/script-format.md`, and its wrapper
+  scripts to `scripts/generate.ps1` and `scripts/generate.sh` (`generar.ps1` and `generar.sh` are
+  kept as thin wrappers for compatibility).
+- `scripts/check_env.py` now ends with `ALL OK` instead of `TODO OK`.
 - The release zip contains an `AudioGeneration/` folder. `install.bat /y` also creates the
   shortcuts (`/noshortcuts` to skip them) and installs the `dev` extra only with `/dev`.
 - The example `guiones/ejemplo_dialogo.md` moved to `examples/`; `guiones/` (where the app saves

@@ -1,4 +1,4 @@
-# Los .bat/.ps1 necesitan CRLF (cmd interpreta mal etiquetas y goto con LF); los .sh, LF.
+# .bat/.ps1 need CRLF (cmd misreads labels and goto with LF); .sh files need LF.
 *.bat text eol=crlf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf

@@ -6,15 +6,15 @@ models/
 .cache/
 *.egg-info/
 .pytest_cache/
-# Claves de API (ver .env.example)
+# API keys (see .env.example)
 .env
 .env.tmp
 .env.local
-# Lanzador compilado (bats/build_launcher.bat), su log y artefactos de PyInstaller / releases
+# Compiled launcher (bats/build_launcher.bat), its log and PyInstaller / release artifacts
 AudioGeneration.exe
 launcher.log
 build/
 dist/
-# Guiones del usuario (la UI guarda aquí); los ejemplos versionados están en examples/
+# User scripts (the UI saves them here); the versioned examples live in examples/
 guiones/*
 !guiones/.gitkeep

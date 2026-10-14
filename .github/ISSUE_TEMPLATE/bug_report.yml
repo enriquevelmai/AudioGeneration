@@ -23,7 +23,7 @@ body:
       label: Steps to reproduce
       description: The command you ran or the buttons you clicked, and a minimal script if relevant.
       placeholder: |
-        1. podcast-tts generate examples\ejemplo.md -o output\test.mp3
+        1. podcast-tts generate examples\english_episode.md -o output\test.mp3
         2. ...
     validations:
       required: true

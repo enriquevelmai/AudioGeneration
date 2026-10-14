@@ -1,67 +1,67 @@
-# Motores TTS: instalación y API verificada (2026-10-12)
+# TTS engines: installation and verified API (2026-10-12)
 
-Entorno probado: Windows 11 Pro, RTX 4080 SUPER 16 GB (driver 610.88, CUDA UMD 13.3),
-Python 3.11.9, uv 0.12.5, ffmpeg 7.1 (chocolatey, build estática). También probado en modo CPU
-(extra `cpu`).
+Tested environment: Windows 11 Pro, RTX 4080 SUPER 16 GB (driver 610.88, CUDA UMD 13.3),
+Python 3.11.9, uv 0.12.5, ffmpeg 7.1 (chocolatey, static build). Also tested in CPU mode
+(`cpu` extra).
 
-Todo está en un único venv (`.venv`): F5-TTS y coqui-tts conviven con los pins descritos abajo.
+Everything lives in a single venv (`.venv`): F5-TTS and coqui-tts coexist with the pins described below.
 
-## 1. Instalación
+## 1. Installation
 
-La forma soportada es `bats\install.bat` (idempotente; reutiliza `.venv` si existe). Detecta GPU
-NVIDIA con `nvidia-smi` y ejecuta, según el caso:
+The supported way is `bats\install.bat` (idempotent; reuses `.venv` if it exists). It detects an NVIDIA
+GPU with `nvidia-smi` and runs, depending on the case:
 
 ```powershell
-uv sync --locked --python 3.11 --extra local --extra cuda --extra dev   # GPU NVIDIA (torch 2.8.0+cu126)
-uv sync --locked --python 3.11 --extra local --extra cpu --extra dev    # sin GPU (torch 2.8.0+cpu)
+uv sync --locked --python 3.11 --extra local --extra cuda --extra dev   # NVIDIA GPU (torch 2.8.0+cu126)
+uv sync --locked --python 3.11 --extra local --extra cpu --extra dev    # no GPU (torch 2.8.0+cpu)
 .venv\Scripts\python.exe scripts\check_env.py
 ```
 
-Los extras elegidos quedan en `.venv\podcast-tts-extras.txt`; `bats\update.bat` los reutiliza y
-`bats\install_gpu.bat` cambia `cpu` por `cuda` (uv solo sustituye torch/torchaudio).
-`uv sync --extra dev` a secas instala solo el núcleo (sin torch): parser, motor `dummy`, CLI, UI y
-tests rápidos; es lo que usa la CI.
+The chosen extras are stored in `.venv\podcast-tts-extras.txt`; `bats\update.bat` reuses them and
+`bats\install_gpu.bat` swaps `cpu` for `cuda` (uv only replaces torch/torchaudio).
+Plain `uv sync --extra dev` installs only the core (no torch): parser, `dummy` engine, CLI, UI and
+fast tests; this is what CI uses.
 
-Estructura de `pyproject.toml`:
+Layout of `pyproject.toml`:
 
-- `dependencies` (núcleo, sin torch): numpy, pydub, gradio, pyyaml, scipy, pyloudnorm, huggingface-hub.
+- `dependencies` (core, no torch): numpy, pydub, gradio, pyyaml, scipy, pyloudnorm, huggingface-hub.
 - `local`: f5-tts, coqui-tts, transformers<5, torch/torchaudio 2.8, soundfile.
-- `cuda` / `cpu`: torch/torchaudio 2.8 con `[tool.uv.sources]` apuntando a los índices `explicit`
-  `pytorch-cu126` (`download.pytorch.org/whl/cu126`) o `pytorch-cpu` (`.../whl/cpu`), y
-  `[tool.uv] conflicts = [[{extra="cpu"}, {extra="cuda"}]]` (patrón oficial de uv para PyTorch).
-  Con `local` y sin `cuda`/`cpu`, torch viene de PyPI (CPU en Windows).
+- `cuda` / `cpu`: torch/torchaudio 2.8 with `[tool.uv.sources]` pointing to the `explicit` indexes
+  `pytorch-cu126` (`download.pytorch.org/whl/cu126`) or `pytorch-cpu` (`.../whl/cpu`), and
+  `[tool.uv] conflicts = [[{extra="cpu"}, {extra="cuda"}]]` (uv's official pattern for PyTorch).
+  With `local` and without `cuda`/`cpu`, torch comes from PyPI (CPU on Windows).
 - `dev`: pytest.
-- `environments = ["sys_platform == 'win32'", "sys_platform == 'linux'"]`: Windows para el uso real y
-  Linux para la CI. El lock contiene tres variantes de torch (PyPI, `+cpu`, `+cu126`).
+- `environments = ["sys_platform == 'win32'", "sys_platform == 'linux'"]`: Windows for real use and
+  Linux for CI. The lock contains three torch variants (PyPI, `+cpu`, `+cu126`).
 
-Re-resolver dependencias: `uv lock --python 3.11` y luego `bats\update.bat` (o `uv sync` con los extras).
-`uv sync` instala además el propio paquete `podcast-tts` en modo editable (`src/podcast_tts`) y el
-ejecutable `.venv\Scripts\podcast-tts.exe`.
+Re-resolving dependencies: `uv lock --python 3.11`, then `bats\update.bat` (or `uv sync` with the extras).
+`uv sync` also installs the `podcast-tts` package itself in editable mode (`src/podcast_tts`) and the
+`.venv\Scripts\podcast-tts.exe` executable.
 
-Dispositivo: `podcast_tts.device.select_device()` elige `cuda` si `torch.cuda.is_available()` y si no
-`cpu` (avisa por logging de que irá lento); `PODCAST_TTS_DEVICE=cpu|cuda|auto` lo fuerza.
+Device: `podcast_tts.device.select_device()` picks `cuda` if `torch.cuda.is_available()`, otherwise
+`cpu` (it logs a warning that it will be slow); `PODCAST_TTS_DEVICE=cpu|cuda|auto` forces it.
 
-Modelos: no se versionan. `podcast-tts models list|status|download|update` (`src/podcast_tts/models.py`,
-solo depende de `huggingface_hub`) los gestiona en las cachés estándar (HF y coqui); ver README.
+Models: they are not versioned. `podcast-tts models list|status|download|update` (`src/podcast_tts/models.py`,
+depends only on `huggingface_hub`) manages them in the standard caches (HF and coqui); see the README.
 
-### Pins y por qué
+### Pins and why
 
-| Pin | Motivo |
+| Pin | Reason |
 |---|---|
-| `torch==2.8.*`, `torchaudio==2.8.*` (cu126) | Desde torch/torchaudio 2.9, `torchaudio.load` delega en **torchcodec**, que en Windows necesita las DLL *compartidas* de FFmpeg (`avcodec-*.dll`...). El ffmpeg de chocolatey es estático, así que `torchaudio.load` fallaba (`Could not load this library: ...libtorchcodec_core*.dll`) en F5 (`f5_tts/infer/utils_infer.py:403`) y en XTTS (`TTS/tts/models/xtts.py:84`). Además coqui-tts aborta el import con torch>=2.9 si torchcodec no está disponible. torchaudio 2.8 usa el backend `soundfile`, sin dependencias nativas extra. cu126 funciona perfectamente en la 4080 (sm_89). |
-| `transformers>=4.57,<5` | coqui-tts 0.27.5 hace `from transformers.pytorch_utils import isin_mps_friendly`, eliminado en transformers 5.x (`ImportError` al importar `TTS.api`). Con 4.57.6 funciona. |
-| `coqui-tts>=0.27,<0.28` | Fork mantenido por idiap, soporta py3.11 y XTTS v2. |
-| `[tool.uv] constraint-dependencies = ["datasets>=4"]` | Sin esto, `uv lock` retrocedía a datasets 2.14.4 (2023), incompatible con fsspec moderno (f5-tts importa `datasets`). |
+| `torch==2.8.*`, `torchaudio==2.8.*` (cu126) | Since torch/torchaudio 2.9, `torchaudio.load` delegates to **torchcodec**, which on Windows needs the *shared* FFmpeg DLLs (`avcodec-*.dll`...). The chocolatey ffmpeg is static, so `torchaudio.load` failed (`Could not load this library: ...libtorchcodec_core*.dll`) in F5 (`f5_tts/infer/utils_infer.py:403`) and in XTTS (`TTS/tts/models/xtts.py:84`). On top of that, coqui-tts aborts its import with torch>=2.9 if torchcodec is not available. torchaudio 2.8 uses the `soundfile` backend, with no extra native dependencies. cu126 works perfectly on the 4080 (sm_89). |
+| `transformers>=4.57,<5` | coqui-tts 0.27.5 does `from transformers.pytorch_utils import isin_mps_friendly`, removed in transformers 5.x (`ImportError` when importing `TTS.api`). Works with 4.57.6. |
+| `coqui-tts>=0.27,<0.28` | Fork maintained by idiap; supports py3.11 and XTTS v2. |
+| `[tool.uv] constraint-dependencies = ["datasets>=4"]` | Without it, `uv lock` fell back to datasets 2.14.4 (2023), incompatible with modern fsspec (f5-tts imports `datasets`). |
 
-`torchcodec 0.17.0` queda instalado porque f5-tts lo declara como dependencia, pero con torch 2.8 nadie
-lo importa en runtime. No hay que tocarlo.
+`torchcodec 0.17.0` stays installed because f5-tts declares it as a dependency, but with torch 2.8 nothing
+imports it at runtime. Leave it alone.
 
-### Versiones finales (paquetes clave, `uv pip freeze`)
+### Final versions (key packages, `uv pip freeze`)
 
 ```
 torch==2.8.0+cu126
 torchaudio==2.8.0+cu126
-torchcodec==0.17.0          (instalado, no usado)
+torchcodec==0.17.0          (installed, not used)
 f5-tts==1.1.22
 coqui-tts==0.27.5
 coqui-tts-trainer==0.3.3
@@ -86,7 +86,7 @@ pytest==9.1.1
 
 ## 2. F5-TTS (`f5-tts` 1.1.22)
 
-Script de referencia: `scripts/smoke_f5.py`.
+Reference script: `scripts/smoke_f5.py`.
 
 ```python
 from importlib.resources import files
@@ -98,13 +98,13 @@ wav, sr, spec = tts.infer(
     ref_text="Some call me nature, others call me mother nature.",
     gen_text="Hola, bienvenidos a este podcast generado localmente.",
     nfe_step=32, speed=1.0, seed=42,
-    file_wave="output/smoke_f5_es.wav",      # opcional: escribe el WAV con soundfile
-    show_info=lambda *a, **k: None,          # silencia los prints internos
+    file_wave="output/smoke_f5_es.wav",      # optional: writes the WAV with soundfile
+    show_info=lambda *a, **k: None,          # silences the internal prints
 )
 # wav: np.ndarray float32 mono; sr: int = 24000; spec: np.ndarray (mel)
 ```
 
-Firmas (leídas de `.venv/Lib/site-packages/f5_tts/api.py`):
+Signatures (read from `.venv/Lib/site-packages/f5_tts/api.py`):
 
 ```python
 F5TTS(model="F5TTS_v1_Base", ckpt_file="", vocab_file="", ode_method="euler", use_ema=True,
@@ -116,28 +116,28 @@ F5TTS.infer(ref_file, ref_text, gen_text, show_info=print, progress=tqdm, target
             seed=None) -> (wav, sr, spec)
 
 F5TTS.export_wav(wav, file_wave, remove_silence=False)
-F5TTS.transcribe(ref_audio, language=None)   # Whisper, ver abajo
+F5TTS.transcribe(ref_audio, language=None)   # Whisper, see below
 F5TTS.target_sample_rate                      # 24000
 ```
 
-- Modelos disponibles (`f5_tts/configs/*.yaml`): `F5TTS_v1_Base` (por defecto, recomendado), `F5TTS_Base`,
+- Available models (`f5_tts/configs/*.yaml`): `F5TTS_v1_Base` (default, recommended), `F5TTS_Base`,
   `E2TTS_Base`, `F5TTS_Small`, `F5TTS_v1_Small`, `E2TTS_Small`.
-- **Sample rate de salida: 24000 Hz, mono, float32.**
-- Audios de referencia del paquete: `f5_tts/infer/examples/basic/basic_ref_en.wav`
-  (texto: "Some call me nature, others call me mother nature.") y `basic_ref_zh.wav`.
-- `ref_text=""` -> transcribe la referencia automáticamente con `openai/whisper-large-v3-turbo`
-  (pipeline de transformers; descarga ~1.6 GB la primera vez). Mejor pasar siempre el texto.
-  **Ojo en Windows**: el pipeline ASR de transformers importa **torchcodec** para decodificar el audio
-  cuando se le pasa una ruta, y falla con `WinError 127` (faltan las DLL compartidas de FFmpeg).
-  `src/podcast_tts/engines/f5.py` (`_transcribe_reference`) lo evita: preprocesa el clip con F5
-  (recorte a ~12 s), lo pasa al pipeline como array numpy (`{"raw": ..., "sampling_rate": ...}`) con
-  `is_torchcodec_available` forzado a `False` y cachea la transcripción en memoria por clip
-  (ruta + tamaño + mtime). Si aun así falla, pide escribir la transcripción en `ref.txt`.
-- La referencia se recorta a ~12 s (`preprocess_ref_audio_text`); usar referencias de 5-10 s.
-- El texto largo se trocea internamente en lotes (`infer_process` -> `chunk_text`) y se concatena con crossfade.
-- El modelo base está entrenado en **inglés y chino**: el castellano sale inteligible pero con acento.
-  Para castellano nativo existe el finetune comunitario `jpgallegoar/F5-Spanish` (licencia **CC-BY-NC-4.0**,
-  arquitectura `F5TTS_Base`), probado y funcionando:
+- **Output sample rate: 24000 Hz, mono, float32.**
+- Reference audio bundled with the package: `f5_tts/infer/examples/basic/basic_ref_en.wav`
+  (text: "Some call me nature, others call me mother nature.") and `basic_ref_zh.wav`.
+- `ref_text=""` -> transcribes the reference automatically with `openai/whisper-large-v3-turbo`
+  (transformers pipeline; downloads ~1.6 GB the first time). Better to always pass the text.
+  **Watch out on Windows**: the transformers ASR pipeline imports **torchcodec** to decode the audio
+  when given a path, and fails with `WinError 127` (missing shared FFmpeg DLLs).
+  `src/podcast_tts/engines/f5.py` (`_transcribe_reference`) avoids this: it preprocesses the clip with F5
+  (trimmed to ~12 s), passes it to the pipeline as a numpy array (`{"raw": ..., "sampling_rate": ...}`) with
+  `is_torchcodec_available` forced to `False`, and caches the transcription in memory per clip
+  (path + size + mtime). If it still fails, it asks you to write the transcription into `ref.txt`.
+- The reference is trimmed to ~12 s (`preprocess_ref_audio_text`); use 5-10 s references.
+- Long text is split internally into batches (`infer_process` -> `chunk_text`) and joined with a crossfade.
+- The base model is trained on **English and Chinese**: Spanish comes out intelligible but accented.
+  For native Spanish there is the community finetune `jpgallegoar/F5-Spanish` (license **CC-BY-NC-4.0**,
+  `F5TTS_Base` architecture), tested and working:
 
   ```python
   from cached_path import cached_path
@@ -146,79 +146,79 @@ F5TTS.target_sample_rate                      # 24000
   tts_es = F5TTS(model="F5TTS_Base", ckpt_file=ckpt, vocab_file=vocab, device="cuda")
   ```
 
-  Salida de prueba: `output/smoke_f5_spanish_ft_es.wav`.
+  Test output: `output/smoke_f5_spanish_ft_es.wav`.
 
-Caché de modelos (Hugging Face hub, `~/.cache/huggingface/hub`, se cambia con `HF_HOME` o `hf_cache_dir=`):
+Model cache (Hugging Face hub, `~/.cache/huggingface/hub`; change it with `HF_HOME` or `hf_cache_dir=`):
 
 - `models--SWivid--F5-TTS` (1.3 GB; `F5TTS_v1_Base/model_1250000.safetensors`)
 - `models--charactr--vocos-mel-24khz` (52 MB, vocoder)
-- `models--jpgallegoar--F5-Spanish` (opcional, ~1.3 GB)
+- `models--jpgallegoar--F5-Spanish` (optional, ~1.3 GB)
 
-Tiempos medidos (RTX 4080 SUPER, modelo ya en caché, `nfe_step=32`):
+Measured times (RTX 4080 SUPER, model already cached, `nfe_step=32`):
 
-| Caso | Audio | Tiempo | RTF |
+| Case | Audio | Time | RTF |
 |---|---|---|---|
-| Carga `F5TTS_v1_Base` | - | 2.6-2.8 s | - |
-| es (modelo base) | 7.71 s | 1.43-1.70 s | ~0.19-0.22 |
-| en (modelo base) | 7.81 s | 1.00 s | ~0.13 |
-| es (finetune F5-Spanish) | 7.71 s | 1.15 s | ~0.15 |
+| Load `F5TTS_v1_Base` | - | 2.6-2.8 s | - |
+| es (base model) | 7.71 s | 1.43-1.70 s | ~0.19-0.22 |
+| en (base model) | 7.81 s | 1.00 s | ~0.13 |
+| es (F5-Spanish finetune) | 7.71 s | 1.15 s | ~0.15 |
 
-VRAM pico de F5: ~2 GB.
+F5 peak VRAM: ~2 GB.
 
-## 3. XTTS v2 (`coqui-tts` 0.27.5, fork idiap)
+## 3. XTTS v2 (`coqui-tts` 0.27.5, idiap fork)
 
-Script de referencia: `scripts/smoke_xtts.py`.
+Reference script: `scripts/smoke_xtts.py`.
 
 ```python
 import os
-os.environ["COQUI_TOS_AGREED"] = "1"     # ANTES de cargar el modelo; acepta la licencia CPML sin prompt
+os.environ["COQUI_TOS_AGREED"] = "1"     # BEFORE loading the model; accepts the CPML license without a prompt
 from TTS.api import TTS
 
 tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2", progress_bar=False).to("cuda")
 sr = tts.synthesizer.output_sample_rate     # 24000
-tts.speakers                                 # lista de 58 speakers integrados
+tts.speakers                                 # list of 58 built-in speakers
 tts.languages                                # ['en','es','fr','de','it','pt','pl','tr','ru','nl','cs','ar','zh-cn','hu','ko','ja','hi']
 
-# Speaker integrado
+# Built-in speaker
 tts.tts_to_file(text="Hola, bienvenidos.", speaker="Ana Florence", language="es",
                 file_path="output/smoke_xtts_es.wav")
 
-# Clonación desde WAV (uno o lista de WAVs de referencia, 6-15 s)
+# Cloning from a WAV (one reference WAV or a list of them, 6-15 s)
 tts.tts_to_file(text="Hola, bienvenidos.", speaker_wav="voices/ana.wav", language="es",
                 file_path="output/clone.wav")
 
-# En memoria: devuelve list[np.float32] (mono, 24 kHz); los kwargs extra llegan a Xtts.inference
+# In memory: returns list[np.float32] (mono, 24 kHz); extra kwargs are passed to Xtts.inference
 wav = tts.tts(text="...", speaker="Claribel Dervla", language="es", speed=1.2, temperature=0.65)
 ```
 
-Firmas (`.venv/Lib/site-packages/TTS/api.py`):
+Signatures (`.venv/Lib/site-packages/TTS/api.py`):
 
 ```python
 TTS(model_name="", *, model_path=None, config_path=None, vocoder_name=None, vocoder_path=None,
     vocoder_config_path=None, encoder_path=None, encoder_config_path=None, speakers_file_path=None,
-    language_ids_file_path=None, progress_bar=True, gpu=False)        # usar .to("cuda") en vez de gpu=
+    language_ids_file_path=None, progress_bar=True, gpu=False)        # use .to("cuda") instead of gpu=
 TTS.tts(text, speaker=None, language=None, speaker_wav=None, emotion=None,
         split_sentences=True, **kwargs) -> list[float]
 TTS.tts_to_file(text, speaker=None, language=None, speaker_wav=None, emotion=None, pipe_out=None,
                 file_path="output.wav", split_sentences=True, **kwargs) -> str
 ```
 
-kwargs útiles (de `Xtts.inference`): `temperature=0.75, length_penalty=1.0, repetition_penalty=10.0,
-top_k=50, top_p=0.85, do_sample=True, speed=1.0`. `speed=` y `temperature=` verificados.
+Useful kwargs (from `Xtts.inference`): `temperature=0.75, length_penalty=1.0, repetition_penalty=10.0,
+top_k=50, top_p=0.85, do_sample=True, speed=1.0`. `speed=` and `temperature=` verified.
 
-Bajo nivel: `tts.synthesizer.tts_model` es `Xtts`; los latentes de cada speaker integrado están en
+Low level: `tts.synthesizer.tts_model` is `Xtts`; the latents of each built-in speaker are in
 `tts.synthesizer.tts_model.speaker_manager.speakers[name]` -> `{"gpt_cond_latent", "speaker_embedding"}`.
 
-- **Sample rate de salida: 24000 Hz, mono.**
-- Límite de caracteres por frase: `es` 239, `en` 250 (avisa si se excede). Con `split_sentences=True`
-  (por defecto) el texto se trocea por frases; conviene pasar párrafos cortos.
-- Caché del modelo: `%LOCALAPPDATA%\tts\tts_models--multilingual--multi-dataset--xtts_v2` (1.8 GB),
-  (`<TTS_HOME>\tts\...` si se define `TTS_HOME`, o `XDG_DATA_HOME`). `podcast-tts models download xtts`
-  baja los mismos 5 ficheros del repo HF `coqui/XTTS-v2` a esa carpeta con `huggingface_hub`; al cargar,
-  coqui ve `hash.md5` correcto y no vuelve a descargar.
-- Licencia del modelo: Coqui Public Model License (CPML, uso no comercial).
+- **Output sample rate: 24000 Hz, mono.**
+- Character limit per sentence: `es` 239, `en` 250 (warns when exceeded). With `split_sentences=True`
+  (the default) the text is split into sentences; short paragraphs work best.
+- Model cache: `%LOCALAPPDATA%\tts\tts_models--multilingual--multi-dataset--xtts_v2` (1.8 GB)
+  (`<TTS_HOME>\tts\...` if `TTS_HOME` is set, or `XDG_DATA_HOME`). `podcast-tts models download xtts`
+  fetches the same 5 files from the HF repo `coqui/XTTS-v2` into that folder with `huggingface_hub`; on load,
+  coqui sees a correct `hash.md5` and does not download again.
+- Model license: Coqui Public Model License (CPML, non-commercial use).
 
-Speakers integrados (58, en el orden que devuelve `tts.speakers`):
+Built-in speakers (58, in the order returned by `tts.speakers`):
 
 ```
 Claribel Dervla, Daisy Studious, Gracie Wise, Tammie Ema, Alison Dietlinde, Ana Florence,
@@ -233,55 +233,55 @@ Wulf Carlevaro, Aaron Dreschner, Kumar Dahl, Eugenio Mataracı, Ferran Simen, Xa
 Luis Moray, Marcos Rudaski
 ```
 
-Tiempos medidos (RTX 4080 SUPER):
+Measured times (RTX 4080 SUPER):
 
-| Caso | Audio | Tiempo | RTF |
+| Case | Audio | Time | RTF |
 |---|---|---|---|
-| Carga del modelo (1a vez, incluye descarga de 1.8 GB) | - | 28.6 s | - |
-| Carga del modelo (en caché) | - | 9.4 s | - |
+| Model load (first time, includes the 1.8 GB download) | - | 28.6 s | - |
+| Model load (cached) | - | 9.4 s | - |
 | es, "Ana Florence" | 6.1-9.8 s | 2.1-3.3 s | ~0.34 |
 | en, "Ana Florence" | 5.8-6.6 s | 1.7-1.9 s | ~0.29 |
-| es, clonando `basic_ref_en.wav` | 8.9 s | 3.2 s | ~0.36 |
+| es, cloning `basic_ref_en.wav` | 8.9 s | 3.2 s | ~0.36 |
 
-XTTS es estocástico (`do_sample=True`): la duración varía entre ejecuciones.
+XTTS is stochastic (`do_sample=True`): the duration varies between runs.
 
-## 4. Gotchas de Windows
+## 4. Windows gotchas
 
-1. **Consola cp1252 y Unicode**: `print()` de nombres como `Eugenio Mataracı` lanza
-   `UnicodeEncodeError: 'charmap' codec can't encode character '\u0131'` cuando stdout es una tubería
-   (stdout.encoding = cp1252). Ejecutar con `PYTHONIOENCODING=utf-8` (o `PYTHONUTF8=1`), o hacer
-   `sys.stdout.reconfigure(encoding="utf-8")` en el entrypoint. Los `.bat` de `bats/` y los wrappers de la skill exportan ambas variables.
-2. **torchaudio >= 2.9 / torchcodec**: ver la tabla de pins. No subir torch por encima de 2.8 salvo que se
-   instalen las DLL compartidas de FFmpeg (build "shared" en el PATH) o se sustituya `torchaudio.load`
-   por `soundfile`.
-3. **espeak-ng no es necesario**: ni XTTS v2 (tokenizador BPE propio) ni F5-TTS (caracteres / pinyin)
-   lo usan. Solo lo necesitarían otros modelos Coqui con fonemas (VITS...), que no usamos.
-4. **Licencia XTTS**: sin `COQUI_TOS_AGREED=1` la primera carga pide confirmación por `input()` y se
-   cuelga en procesos no interactivos (Gradio, scripts). Definirla antes de instanciar `TTS(...)`.
-5. **Ficheros temporales de F5**: en Python 3.11 `preprocess_ref_audio_text` crea WAV temporales con
-   `delete=False` en `%TEMP%` y no los borra (cachea por ruta de referencia en memoria).
-6. **ffmpeg**: pydub lo necesita para mp3/ogg; el de chocolatey (`C:\ProgramData\chocolatey\bin\ffmpeg.exe`)
-   vale. torchaudio 2.8 no lo necesita (usa soundfile).
-7. **Warnings ruidosos**: `torch.jit.script is deprecated`, avisos de torchaudio y de transformers
-   (GPT2InferenceModel / `generate`) son inofensivos; ejecutar con `-W ignore` o filtrarlos con `warnings`.
-8. **Ambos modelos en VRAM a la vez**: F5 (~2 GB) + XTTS (~2-3 GB) caben de sobra en 16 GB; se pueden
-   mantener cargados simultáneamente en la app.
-9. **Edge-TTS / voces SAPI**: el proyecto no las usa ni las instala. La opción oficial de Microsoft
-   es el motor `azure` (Azure AI Speech, de pago).
-10. **GPU RTX 50 (Blackwell, sm_120)**: las ruedas cu126 de PyTorch 2.8 no incluyen sm_120. Para estas
-    GPU hay que usar el índice `https://download.pytorch.org/whl/cu128` (cambiar `pytorch-cu126` en
-    `pyproject.toml`, `uv lock --python 3.11` y reinstalar) o, mientras tanto, la variante CPU.
+1. **cp1252 console and Unicode**: `print()` of names like `Eugenio Mataracı` raises
+   `UnicodeEncodeError: 'charmap' codec can't encode character '\u0131'` when stdout is a pipe
+   (stdout.encoding = cp1252). Run with `PYTHONIOENCODING=utf-8` (or `PYTHONUTF8=1`), or call
+   `sys.stdout.reconfigure(encoding="utf-8")` in the entry point. The `.bat` files in `bats/` and the skill wrappers export both variables.
+2. **torchaudio >= 2.9 / torchcodec**: see the pins table. Do not upgrade torch beyond 2.8 unless the
+   shared FFmpeg DLLs are installed ("shared" build on the PATH) or `torchaudio.load` is replaced
+   with `soundfile`.
+3. **espeak-ng is not needed**: neither XTTS v2 (own BPE tokenizer) nor F5-TTS (characters / pinyin)
+   uses it. Only other phoneme-based Coqui models (VITS...) would need it, and we do not use them.
+4. **XTTS license**: without `COQUI_TOS_AGREED=1` the first load asks for confirmation via `input()` and
+   hangs in non-interactive processes (Gradio, scripts). Set it before instantiating `TTS(...)`.
+5. **F5 temporary files**: on Python 3.11 `preprocess_ref_audio_text` creates temporary WAVs with
+   `delete=False` in `%TEMP%` and does not delete them (it caches by reference path in memory).
+6. **ffmpeg**: pydub needs it for mp3/ogg; the chocolatey one (`C:\ProgramData\chocolatey\bin\ffmpeg.exe`)
+   works. torchaudio 2.8 does not need it (it uses soundfile).
+7. **Noisy warnings**: `torch.jit.script is deprecated`, torchaudio warnings and transformers warnings
+   (GPT2InferenceModel / `generate`) are harmless; run with `-W ignore` or filter them with `warnings`.
+8. **Both models in VRAM at once**: F5 (~2 GB) + XTTS (~2-3 GB) fit comfortably in 16 GB; the app can
+   keep both loaded at the same time.
+9. **Edge-TTS / SAPI voices**: the project neither uses nor installs them. Microsoft's official option
+   is the `azure` engine (Azure AI Speech, paid).
+10. **RTX 50 GPUs (Blackwell, sm_120)**: the PyTorch 2.8 cu126 wheels do not include sm_120. For these
+    GPUs use the `https://download.pytorch.org/whl/cu128` index (change `pytorch-cu126` in
+    `pyproject.toml`, run `uv lock --python 3.11` and reinstall) or, in the meantime, the CPU variant.
 
 ## 5. Scripts
 
-- `bats/install.bat`, `bats/update.bat`, `bats/install_gpu.bat`: instalación, actualización y cambio
-  CPU -> CUDA (ver sección 1).
-- `bats/run.bat` (app de escritorio; cae al navegador si falta pywebview), `bats/run_web.bat` (navegador),
-  `bats/create_shortcuts.bat` (accesos del Escritorio y del menú Inicio) y `bats/build_launcher.bat`
-  (genera `AudioGeneration.exe`).
-- `scripts/setup.ps1`: compatibilidad; llama a `bats\install.bat /y` (`-Smoke` genera los WAV de prueba; `-Recreate` rehace `.venv`).
-- `scripts/check_env.py`: verifica por capas (núcleo, `local`, `cuda`/`cpu`): Python 3.11, ffmpeg, paquetes del núcleo,
-  que el núcleo no importe torch y, si está el extra `local`, torch 2.8, backend de torchaudio, CUDA e imports de
-  ambos motores. Exit 0 si lo instalado es coherente (solo núcleo también vale), 1 si no. No descarga nada.
-- `scripts/smoke_f5.py`: genera `output/smoke_f5_es.wav` y `output/smoke_f5_en.wav`.
-- `scripts/smoke_xtts.py`: genera `output/smoke_xtts_es.wav` y `output/smoke_xtts_en.wav` y lista los speakers.
+- `bats/install.bat`, `bats/update.bat`, `bats/install_gpu.bat`: installation, update and switching
+  from CPU to CUDA (see section 1).
+- `bats/run.bat` (desktop app; falls back to the browser if pywebview is missing), `bats/run_web.bat` (browser),
+  `bats/create_shortcuts.bat` (Desktop and Start menu shortcuts) and `bats/build_launcher.bat`
+  (builds `AudioGeneration.exe`).
+- `scripts/setup.ps1`: kept for compatibility; calls `bats\install.bat /y` (`-Smoke` generates the test WAVs; `-Recreate` rebuilds `.venv`).
+- `scripts/check_env.py`: checks by layer (core, `local`, `cuda`/`cpu`): Python 3.11, ffmpeg, core packages,
+  that the core does not import torch and, if the `local` extra is present, torch 2.8, the torchaudio backend, CUDA and
+  the imports of both engines. Exit 0 if what is installed is consistent (core only is fine too), 1 otherwise. Downloads nothing.
+- `scripts/smoke_f5.py`: generates `output/smoke_f5_es.wav` and `output/smoke_f5_en.wav`.
+- `scripts/smoke_xtts.py`: generates `output/smoke_xtts_es.wav` and `output/smoke_xtts_en.wav` and lists the speakers.

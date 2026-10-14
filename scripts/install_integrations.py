@@ -1,29 +1,29 @@
-"""Registra el servidor MCP de podcast-tts en los asistentes de IA (idempotente).
+"""Registers the podcast-tts MCP server in AI assistants (idempotent).
 
-- **Claude Code**: instala la skill (scripts/install_skill.ps1) y registra el MCP con
+- **Claude Code**: installs the skill (scripts/install_skill.ps1) and registers the MCP with
   ``claude mcp add --scope user podcast-tts -- <python> -m podcast_tts mcp``.
-- **Claude Desktop**: añade ``podcast-tts`` a ``mcpServers`` de ``claude_desktop_config.json``
-  (fusiona sin borrar otras entradas y deja una copia ``.bak`` antes de escribir).
-- **Otros clientes** (Cursor, VS Code, Windsurf...): imprime el JSON listo para pegar.
+- **Claude Desktop**: adds ``podcast-tts`` to ``mcpServers`` in ``claude_desktop_config.json``
+  (merges without deleting other entries and leaves a ``.bak`` copy before writing).
+- **Other clients** (Cursor, VS Code, Windsurf...): prints the JSON ready to paste.
 
-Antes comprueba que esté instalado el extra ``mcp`` (si falta, ``uv sync`` con los mismos
-extras de ``.venv\\podcast-tts-extras.txt`` más ``mcp``).
+First it checks that the ``mcp`` extra is installed (if missing, ``uv sync`` with the same
+extras as ``.venv\\podcast-tts-extras.txt`` plus ``mcp``).
 
-Uso (normalmente a través de ``bats\\install_integrations.bat``)::
+Usage (normally through ``bats\\install_integrations.bat``)::
 
-    python scripts/install_integrations.py                 # interactivo: detecta y pregunta
-    python scripts/install_integrations.py /y              # todo lo detectado, sin preguntas
-    python scripts/install_integrations.py /claude-code    # solo Claude Code
-    python scripts/install_integrations.py /claude-desktop # solo Claude Desktop
-    python scripts/install_integrations.py /print          # solo imprime el JSON
-    python scripts/install_integrations.py --uninstall     # quita el registro (no la skill)
+    python scripts/install_integrations.py                 # interactive: detects and asks
+    python scripts/install_integrations.py /y              # everything detected, no questions
+    python scripts/install_integrations.py /claude-code    # Claude Code only
+    python scripts/install_integrations.py /claude-desktop # Claude Desktop only
+    python scripts/install_integrations.py /print          # only prints the JSON
+    python scripts/install_integrations.py --uninstall     # removes the registration (not the skill)
 
-Pruebas sin tocar la configuración real::
+Testing without touching the real configuration::
 
     python scripts/install_integrations.py /claude-desktop --config-path C:\\tmp\\cfg.json
     python scripts/install_integrations.py /claude-code --dry-run
 
-Solo usa la biblioteca estándar.
+Uses the standard library only.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ def say(msg: str = "") -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Rutas
+# Paths
 # --------------------------------------------------------------------------- #
 
 
@@ -61,20 +61,20 @@ def venv_python(root: Path = ROOT) -> Path:
 
 
 def server_entry(python: Path, root: Path = ROOT) -> dict[str, Any]:
-    """Entrada ``mcpServers`` (formato de Claude Desktop y Cursor)."""
+    """``mcpServers`` entry (Claude Desktop and Cursor format)."""
     return {
         "command": str(python),
         "args": ["-m", "podcast_tts", "mcp"],
-        # PYTHONPATH=<repo>\src: igual que los bats y el lanzador, para que funcione aunque la
-        # ruta del proyecto tenga acentos (el .pth editable de uv falla en ese caso).
+        # PYTHONPATH=<repo>\src: same as the bats and the launcher, so that it works even if the
+        # project path contains accents (uv's editable .pth fails in that case).
         "env": {"PYTHONPATH": str(root / "src"), **ENV},
     }
 
 
 def desktop_config_paths() -> list[Path]:
-    """Ficheros de configuración de Claude Desktop en este equipo (el primero es el estándar).
+    """Claude Desktop configuration files on this machine (the first one is the standard one).
 
-    Incluye la ubicación virtualizada de la versión de Microsoft Store (MSIX) si existe.
+    Includes the virtualized location of the Microsoft Store (MSIX) version if it exists.
     """
     paths: list[Path] = []
     if os.name == "nt":
@@ -113,7 +113,7 @@ def find_uv() -> str | None:
 
 
 # --------------------------------------------------------------------------- #
-# Claude Desktop (fusión de JSON)
+# Claude Desktop (JSON merge)
 # --------------------------------------------------------------------------- #
 
 
@@ -130,15 +130,15 @@ def _read_json(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise ConfigError(f"{path} no es un JSON válido ({exc}); no se modifica. "
-                          "Corrígelo a mano o bórralo y vuelve a ejecutar.") from exc
+        raise ConfigError(f"{path} is not valid JSON ({exc}); it is left unchanged. "
+                          "Fix it by hand or delete it and run again.") from exc
     if not isinstance(data, dict):
-        raise ConfigError(f"{path} no contiene un objeto JSON; no se modifica.")
+        raise ConfigError(f"{path} does not contain a JSON object; it is left unchanged.")
     return data
 
 
 def _write_json(path: Path, data: dict[str, Any]) -> Path | None:
-    """Escribe ``data`` (copia ``.bak`` previa si el fichero existía). Devuelve el backup."""
+    """Writes ``data`` (with a prior ``.bak`` copy if the file existed). Returns the backup."""
     backup = None
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -152,16 +152,16 @@ def _write_json(path: Path, data: dict[str, Any]) -> Path | None:
 
 def merge_desktop_config(path: Path, entry: dict[str, Any], *, uninstall: bool = False,
                          dry_run: bool = False) -> str:
-    """Añade (o quita) ``podcast-tts`` en ``mcpServers`` sin tocar el resto.
+    """Adds (or removes) ``podcast-tts`` in ``mcpServers`` without touching the rest.
 
-    Devuelve ``"added"``, ``"updated"``, ``"unchanged"``, ``"removed"`` o ``"absent"``.
+    Returns ``"added"``, ``"updated"``, ``"unchanged"``, ``"removed"`` or ``"absent"``.
     """
     data = _read_json(path)
     servers = data.get("mcpServers")
     if servers is None:
         servers = {}
     if not isinstance(servers, dict):
-        raise ConfigError(f"'mcpServers' en {path} no es un objeto; no se modifica.")
+        raise ConfigError(f"'mcpServers' in {path} is not an object; it is left unchanged.")
     current = servers.get(SERVER_NAME)
     if uninstall:
         if current is None:
@@ -188,22 +188,22 @@ def install_claude_desktop(entry: dict[str, Any], paths: list[Path], *, uninstal
             say(f"  ERROR: {exc}")
             ok = False
             continue
-        prefix = "[simulación] " if dry_run else ""
+        prefix = "[dry run] " if dry_run else ""
         messages = {
-            "added": "añadido podcast-tts",
-            "updated": "actualizada la entrada podcast-tts",
-            "unchanged": "ya estaba configurado (sin cambios)",
-            "removed": "quitada la entrada podcast-tts",
-            "absent": "no había entrada podcast-tts (nada que quitar)",
+            "added": "added podcast-tts",
+            "updated": "updated the podcast-tts entry",
+            "unchanged": "already configured (no changes)",
+            "removed": "removed the podcast-tts entry",
+            "absent": "there was no podcast-tts entry (nothing to remove)",
         }
         say(f"  {prefix}{path}: {messages[status]}")
         if status in ("added", "updated", "removed") and not dry_run:
             bak = path.with_name(path.name + ".bak")
             if bak.exists():
-                say(f"  Copia de seguridad: {bak}")
+                say(f"  Backup: {bak}")
     if ok and not dry_run:
-        say("  Reinicia Claude Desktop (ciérralo también desde la bandeja del sistema) para "
-            "que cargue el servidor.")
+        say("  Restart Claude Desktop (also quit it from the system tray) so that "
+            "it loads the server.")
     return ok
 
 
@@ -220,7 +220,7 @@ def _run(cmd: Sequence[str]) -> "subprocess.CompletedProcess[str]":
 def claude_code_commands(claude: str, python: Path, *, uninstall: bool) -> list[list[str]]:
     if uninstall:
         return [[claude, "mcp", "remove", "--scope", "user", SERVER_NAME]]
-    # Las -e van después del nombre: --env es variádico y si fuese delante se tragaría el nombre.
+    # The -e options go after the name: --env is variadic and, placed before, it would swallow the name.
     env: list[str] = []
     for key, value in server_entry(python)["env"].items():
         env += ["-e", f"{key}={value}"]
@@ -238,35 +238,35 @@ def install_claude_code(python: Path, *, uninstall: bool, dry_run: bool,
         if noninteractive:
             cmd.append("-NoReplace")
         if dry_run:
-            say(f"  [simulación] {subprocess.list2cmdline(cmd)}")
+            say(f"  [dry run] {subprocess.list2cmdline(cmd)}")
         else:
             res = runner(cmd)
             out = (res.stdout or "").strip() or (res.stderr or "").strip()
-            say(f"  Skill: {out}" if out else "  Skill instalada.")
+            say(f"  Skill: {out}" if out else "  Skill installed.")
             if res.returncode != 0:
-                say("  AVISO: no se pudo instalar la skill (ver arriba).")
+                say("  WARNING: could not install the skill (see above).")
                 ok = False
     claude = claude or find_claude_cli()
     if not claude:
-        say("  No se encuentra el CLI 'claude' en el PATH: se omite el registro del MCP.")
-        say("  Cuando lo tengas: "
+        say("  The 'claude' CLI was not found on the PATH: skipping the MCP registration.")
+        say("  Once you have it: "
             + subprocess.list2cmdline(claude_code_commands("claude", python, uninstall=False)[0]))
         return ok
     if dry_run:
         for cmd in claude_code_commands(claude, python, uninstall=uninstall):
-            say(f"  [simulación] {subprocess.list2cmdline(cmd)}")
+            say(f"  [dry run] {subprocess.list2cmdline(cmd)}")
         return ok
     current = runner([claude, "mcp", "get", SERVER_NAME])
     exists = current.returncode == 0
     if uninstall:
         if not exists:
-            say("  Claude Code: no había servidor podcast-tts (nada que quitar).")
+            say("  Claude Code: there was no podcast-tts server (nothing to remove).")
             return ok
     elif exists:
         if str(python).lower() in (current.stdout or "").lower():
-            say("  Claude Code: podcast-tts ya estaba registrado (sin cambios).")
+            say("  Claude Code: podcast-tts was already registered (no changes).")
             return ok
-        say("  Claude Code: podcast-tts apunta a otra instalación; se vuelve a registrar.")
+        say("  Claude Code: podcast-tts points to another installation; registering it again.")
         runner([claude, "mcp", "remove", "--scope", "user", SERVER_NAME])
     for cmd in claude_code_commands(claude, python, uninstall=uninstall):
         res = runner(cmd)
@@ -274,12 +274,12 @@ def install_claude_code(python: Path, *, uninstall: bool, dry_run: bool,
         if res.returncode != 0:
             say(f"  ERROR ({res.returncode}): {out}")
             return False
-        say(f"  Claude Code: {out or 'hecho'}")
+        say(f"  Claude Code: {out or 'done'}")
     return ok
 
 
 # --------------------------------------------------------------------------- #
-# Extra mcp y comprobación
+# mcp extra and check
 # --------------------------------------------------------------------------- #
 
 
@@ -303,25 +303,25 @@ def read_extras(root: Path = ROOT) -> list[str]:
 
 def ensure_mcp_extra(python: Path, *, dry_run: bool, root: Path = ROOT) -> bool:
     if python.is_file() and mcp_installed(python):
-        say("  El extra mcp ya está instalado.")
+        say("  The mcp extra is already installed.")
         return True
     extras = read_extras(root)
     if "mcp" not in extras:
         extras.append("mcp")
     uv = find_uv()
     if not uv:
-        say("  ERROR: no se encuentra uv. Ejecuta antes bats\\install.bat.")
+        say("  ERROR: uv not found. Run bats\\install.bat first.")
         return False
     cmd = [uv, "sync", "--locked", "--python", "3.11"]
     for e in extras:
         cmd += ["--extra", e]
     if dry_run:
-        say(f"  [simulación] {subprocess.list2cmdline(cmd)}")
+        say(f"  [dry run] {subprocess.list2cmdline(cmd)}")
         return True
-    say(f"  Instalando el extra mcp (extras: {' '.join(extras)})...")
+    say(f"  Installing the mcp extra (extras: {' '.join(extras)})...")
     res = subprocess.run(cmd, cwd=str(root))
     if res.returncode != 0:
-        say("  ERROR en uv sync (ver arriba).")
+        say("  ERROR in uv sync (see above).")
         return False
     fix = root / "scripts" / "fix_editable_pth.py"
     if fix.is_file() and python.is_file():
@@ -350,26 +350,26 @@ asyncio.run(main())
 
 
 def check_server(python: Path) -> bool:
-    """Arranca el servidor como lo haría un cliente y cuenta sus herramientas."""
+    """Starts the server the way a client would and counts its tools."""
     started = time.perf_counter()
     try:
         res = subprocess.run([str(python), "-c", CHECK_CODE], capture_output=True, text=True,
                              timeout=120, cwd=str(Path.home()),
                              env={**os.environ, **server_entry(python)["env"]})
     except subprocess.TimeoutExpired:
-        say("  ERROR: el servidor no respondió en 120 s.")
+        say("  ERROR: the server did not respond within 120 s.")
         return False
     if res.returncode != 0:
-        say("  ERROR: el servidor MCP no arranca:")
+        say("  ERROR: the MCP server does not start:")
         say("  " + (res.stderr or "").strip().replace("\n", "\n  ")[-2000:])
         return False
-    say(f"  Servidor MCP correcto: {res.stdout.strip()} herramientas "
+    say(f"  MCP server OK: {res.stdout.strip()} tools "
         f"({time.perf_counter() - started:.1f} s).")
     return True
 
 
 # --------------------------------------------------------------------------- #
-# JSON para otros clientes
+# JSON for other clients
 # --------------------------------------------------------------------------- #
 
 
@@ -378,18 +378,18 @@ def other_clients_text(entry: dict[str, Any]) -> str:
     vscode = json.dumps({"servers": {SERVER_NAME: {"type": "stdio", **entry}}}, indent=2,
                         ensure_ascii=False)
     cli = subprocess.list2cmdline([entry["command"], *entry["args"]])
-    return f"""Claude Desktop, Cursor (~/.cursor/mcp.json o .cursor/mcp.json), Windsurf y la
-mayoría de clientes (clave "mcpServers"):
+    return f"""Claude Desktop, Cursor (~/.cursor/mcp.json or .cursor/mcp.json), Windsurf and most
+clients ("mcpServers" key):
 
 {desktop}
 
-VS Code (.vscode/mcp.json o "MCP: Open User Configuration"; clave "servers"):
+VS Code (.vscode/mcp.json or "MCP: Open User Configuration"; "servers" key):
 
 {vscode}
 
-Comando del servidor (stdio), para cualquier otro cliente: {cli}
-Variables de entorno: {", ".join(f"{k}={v}" for k, v in entry["env"].items())}.
-Salida por defecto: {ROOT / 'output'} (cámbiala con la variable PODCAST_TTS_OUTPUT_DIR)."""
+Server command (stdio), for any other client: {cli}
+Environment variables: {", ".join(f"{k}={v}" for k, v in entry["env"].items())}.
+Default output: {ROOT / 'output'} (change it with the PODCAST_TTS_OUTPUT_DIR variable)."""
 
 
 # --------------------------------------------------------------------------- #
@@ -399,14 +399,14 @@ Salida por defecto: {ROOT / 'output'} (cámbiala con la variable PODCAST_TTS_OUT
 
 def ask(question: str) -> bool:
     try:
-        answer = input(f"  {question}? [S/n] ").strip().lower()
+        answer = input(f"  {question}? [Y/n] ").strip().lower()
     except EOFError:
         return True
     return answer not in ("n", "no")
 
 
-# Los .bat usan opciones al estilo de Windows (/y, /print...). Solo se traducen estas palabras
-# exactas: un prefijo "/" general confundiría las rutas POSIX (/tmp/x.json) con opciones.
+# The .bat files use Windows-style options (/y, /print...). Only these exact words are
+# translated: a general "/" prefix would confuse POSIX paths (/tmp/x.json) with options.
 SLASH_FLAGS = {"/y": "--yes", "/claude-code": "--claude-code", "/claude-desktop": "--claude-desktop",
                "/print": "--print", "/uninstall": "--uninstall"}
 
@@ -418,25 +418,25 @@ def normalize_argv(argv: Sequence[str]) -> list[str]:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="install_integrations",
-        description="Registra el servidor MCP de podcast-tts en Claude Code, Claude Desktop y "
-                    "otros clientes MCP (idempotente).")
+        description="Registers the podcast-tts MCP server in Claude Code, Claude Desktop and "
+                    "other MCP clients (idempotent).")
     p.add_argument("-y", "--yes", dest="yes", action="store_true",
-                   help="sin preguntas: configura todo lo detectado")
+                   help="no questions: configures everything detected")
     p.add_argument("--claude-code", dest="claude_code", action="store_true",
-                   help="solo Claude Code (skill + claude mcp add)")
+                   help="Claude Code only (skill + claude mcp add)")
     p.add_argument("--claude-desktop", dest="claude_desktop",
-                   action="store_true", help="solo Claude Desktop (claude_desktop_config.json)")
+                   action="store_true", help="Claude Desktop only (claude_desktop_config.json)")
     p.add_argument("--print", dest="print_only", action="store_true",
-                   help="solo imprime el JSON para pegar en otros clientes")
+                   help="only prints the JSON to paste into other clients")
     p.add_argument("--uninstall", dest="uninstall", action="store_true",
-                   help="quita el registro de podcast-tts (no borra la skill)")
-    p.add_argument("--config-path", action="append", default=None, metavar="FICHERO",
-                   help="claude_desktop_config.json a usar (para pruebas; repetible)")
+                   help="removes the podcast-tts registration (does not delete the skill)")
+    p.add_argument("--config-path", action="append", default=None, metavar="FILE",
+                   help="claude_desktop_config.json to use (for testing; repeatable)")
     p.add_argument("--dry-run", action="store_true",
-                   help="no ejecuta claude ni uv ni escribe la configuración: muestra qué haría")
-    p.add_argument("--no-skill", action="store_true", help="no instala la skill de Claude Code")
+                   help="does not run claude or uv nor write the configuration: shows what it would do")
+    p.add_argument("--no-skill", action="store_true", help="does not install the Claude Code skill")
     p.add_argument("--no-check", action="store_true",
-                   help="no arranca el servidor para comprobarlo")
+                   help="does not start the server to check it")
     p.add_argument("--python", default=None, help=argparse.SUPPRESS)
     return p
 
@@ -451,15 +451,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     python = Path(args.python) if args.python else venv_python()
     entry = server_entry(python)
     say("=" * 68)
-    say(f" podcast-tts - integraciones con asistentes de IA (MCP)")
-    say(f" Proyecto: {ROOT}")
+    say(f" podcast-tts - integrations with AI assistants (MCP)")
+    say(f" Project: {ROOT}")
     say("=" * 68)
 
     if args.print_only:
         say(other_clients_text(entry))
         return 0
     if not args.dry_run and not python.is_file():
-        say(f"ERROR: no existe {python}. Ejecuta antes bats\\install.bat.")
+        say(f"ERROR: {python} does not exist. Run bats\\install.bat first.")
         return 1
 
     explicit = args.claude_code or args.claude_desktop
@@ -473,16 +473,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         if explicit:
             return flag
         if not detected:
-            say(f"\n{label}: no detectado, se omite.")
+            say(f"\n{label}: not detected, skipped.")
             return False
-        return True if noninteractive else ask(f"Configurar {label}")
+        return True if noninteractive else ask(f"Configure {label}")
 
     do_code = wanted(args.claude_code, has_code, "Claude Code")
     do_desktop = wanted(args.claude_desktop, has_desktop, "Claude Desktop")
     ok = True
 
     if not args.uninstall:
-        say("\n[1] Dependencias del servidor MCP")
+        say("\n[1] MCP server dependencies")
         ok = ensure_mcp_extra(python, dry_run=args.dry_run) and ok
         if ok and not args.dry_run and not args.no_check:
             ok = check_server(python) and ok
@@ -500,12 +500,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                                     dry_run=args.dry_run) and ok
 
     if not args.uninstall and not explicit:
-        say("\n[4] Otros clientes (Cursor, VS Code...): pega esto en su configuración MCP")
+        say("\n[4] Other clients (Cursor, VS Code...): paste this into their MCP configuration")
         say(other_clients_text(entry))
     say("")
     if not args.uninstall:
-        say('Prueba: abre tu asistente y pide "hazme un podcast de 3 minutos sobre la historia '
-            'del café". Más información: docs/MCP.md')
+        say('Try it: open your assistant and ask "make me a 3-minute podcast about the history '
+            'of coffee". More information: docs/MCP.md')
     return 0 if ok else 1
 
 

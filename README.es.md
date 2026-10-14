@@ -17,7 +17,7 @@
 </p>
 
 **Escribe un guion en Markdown y obtén un podcast.** AudioGeneration convierte un guion de texto
-con etiquetas sencillas (`[voz:ana]`, `[pausa:1]`, `[musica:intro.mp3]`) en un MP3 terminado con
+con etiquetas sencillas (`[voice:ana]`, `[pause:1]`, `[music:intro.mp3]`) en un MP3 terminado con
 varias voces, música y efectos, clonando voces a partir de un clip de 10 segundos, todo en tu
 propio PC.
 
@@ -78,7 +78,7 @@ propio PC.
 - **Tomas rápidas**: gracias a la caché de síntesis, al editar un guion solo se generan de nuevo
   las frases que han cambiado.
 - **Tres formas de usarlo**: app de escritorio, la misma interfaz en el navegador o una línea de
-  comandos completa. La interfaz y la CLI están en castellano.
+  comandos completa. La interfaz y la CLI están en inglés por defecto y también en castellano.
 - **Licencias claras**: cada motor declara su licencia, `podcast-tts engines` muestra cuáles
   permiten uso comercial y recibes un aviso cuando un guion usa uno no comercial.
 - **Extensible**: añade motores como plugins sin tocar este repositorio.
@@ -101,7 +101,7 @@ propio PC.
    NVIDIA, PyTorch con CUDA. Tarda unos **10-15 minutos** y ocupa **unos 6-7 GB** con GPU, según tu
    conexión. También puede instalar `ffmpeg`, descargar los modelos de voz y crear accesos directos
    en el Escritorio y en el menú Inicio.
-5. Se abre la app. Pulsa **Generar** con el guion de ejemplo y escucha tu primer episodio.
+5. Se abre la app. Pulsa **Generate** (**Generar** en castellano) con el guion de ejemplo y escucha tu primer episodio.
 
 A partir de entonces, `AudioGeneration.exe` busca actualizaciones y abre la app en unos segundos.
 
@@ -154,16 +154,20 @@ Haz doble clic en `AudioGeneration.exe`, en el acceso directo **AudioGeneration*
 `bats\run.bat`. La interfaz se abre en su propia ventana. Si el componente de escritorio
 (pywebview) no está disponible, `run.bat` la abre en el navegador.
 
-La app tiene cuatro pestañas:
+La app tiene cuatro pestañas. Sus nombres están en inglés por defecto; con el idioma en castellano
+(ver [Idioma](#idioma)) aparecen como se indica entre paréntesis:
 
-- **Guion → Podcast**: editor con el ejemplo precargado, selector de motor, formato de salida,
-  **Validar** (tabla de segmentos y voces, con los errores por número de línea) y **Generar**
-  (barra de progreso, log, reproductor y enlace de descarga). Los ficheros se guardan en `output/`.
-- **Voces**: tus voces, su clip de referencia, **Probar voz** para oír una frase y **Añadir voz**
-  para subir o grabar un clip con el micrófono, o elegir una voz integrada de XTTS.
-- **Sistema**: estado de la GPU y CUDA, motores disponibles, carpetas y tamaños, caché y ficheros
-  generados.
-- **Ajustes**: claves de API de los motores en la nube y licencia de cada motor.
+- **Script → Podcast** (Guion → Podcast): editor con el ejemplo precargado, selector de motor,
+  formato de salida, **Validate** (Validar: tabla de segmentos y voces, con los errores por número
+  de línea) y **Generate** (Generar: barra de progreso, log, reproductor y enlace de descarga). Los
+  ficheros se guardan en `output/`.
+- **Voices** (Voces): tus voces, su clip de referencia, **Test voice** (Probar voz) para oír una
+  frase y **Add voice** (Añadir voz) para subir o grabar un clip con el micrófono, o elegir una voz
+  integrada de XTTS.
+- **System** (Sistema): estado de la GPU y CUDA, motores disponibles, carpetas y tamaños, caché y
+  ficheros generados.
+- **Settings** (Ajustes): claves de API de los motores en la nube, idioma de la interfaz y
+  licencia de cada motor.
 
 ### En el navegador
 
@@ -182,10 +186,10 @@ $env:PYTHONUTF8 = '1'; $env:COQUI_TOS_AGREED = '1'   # cmd: set PYTHONUTF8=1 & s
 
 ```powershell
 # Generar un episodio (MP3 o WAV, según la extensión)
-podcast-tts generate examples\ejemplo.md -o output\episodio.mp3
+podcast-tts generate examples\english_episode.md -o output\episodio.mp3
 
 # Probar tiempos y mezcla sin modelos ni GPU (tonos en vez de voces)
-podcast-tts generate examples\ejemplo.md -o output\prueba.mp3 --engine dummy
+podcast-tts generate examples\english_episode.md -o output\prueba.mp3 --engine dummy
 
 # Ver cómo se interpreta un guion (JSON), sin sintetizar
 podcast-tts parse examples\english_episode.md
@@ -216,13 +220,26 @@ podcast-tts ui --host 0.0.0.0 --auth ana:una-clave-larga   # tu red local, con u
 > La UI no tiene cuentas: quien pueda abrirla puede generar audio, borrar voces y usar tus claves
 > de API. Con un `--host` distinto de `127.0.0.1`/`localhost`, o con `--share` (enlace público de
 > Gradio), no arranca sin `--auth usuario:clave` (o la variable `PODCAST_TTS_AUTH`) y funciona en
-> *modo remoto*: sin la pestaña **Ajustes** (claves de API) y con música/sfx solo desde rutas
+> *modo remoto*: sin la pestaña **Settings** (Ajustes; claves de API) y con música/sfx solo desde rutas
 > relativas. Ábrela solo en redes de confianza.
 
 Opciones útiles de `generate`: `--engine` (fuerza un motor para todo el guion), `--voices-dir`,
 `--max-chars 250`, `--bitrate 192k`, `--sample-rate 44100`, `--lufs -16`, `--no-normalize`,
 `--no-cache`, `--cache-dir`, `-q`, `--no-license-notice`. Ejecuta `podcast-tts <comando> --help`
 para ver la lista completa.
+
+### Idioma
+
+La interfaz y los mensajes de la CLI están en inglés por defecto. Para tenerlos en castellano,
+define la variable de entorno `PODCAST_TTS_LANG` antes de abrir la app o la CLI:
+
+```powershell
+$env:PODCAST_TTS_LANG = 'es'   # cmd: set PODCAST_TTS_LANG=es
+```
+
+o elígelo en la app en **Settings → Language** (**Ajustes → Idioma** una vez en castellano). Solo
+cambia los mensajes de la interfaz y de la CLI: los guiones pueden estar en cualquier idioma en
+ambos casos, y las etiquetas funcionan igual.
 
 ---
 
@@ -234,7 +251,7 @@ Un guion es un fichero `.md` en UTF-8. Puede empezar con un *front matter* opcio
 ---
 title: Mi episodio
 lang: es              # idioma por defecto
-default_voice: ana    # voz para el texto anterior a la primera etiqueta [voz:]
+default_voice: ana    # voz para el texto anterior a la primera etiqueta [voice:]
 engine: f5            # motor por defecto
 paragraph_pause: 0.4  # pausa entre párrafos, en segundos
 ---
@@ -242,20 +259,22 @@ paragraph_pause: 0.4  # pausa entre párrafos, en segundos
 
 | Etiqueta | Alias | Efecto | Atributos |
 |---|---|---|---|
-| `[voz:nombre]` | `[voice:nombre]` | Cambia de hablante hasta la siguiente etiqueta de voz | `lang=es\|en\|...`, `speed=1.1`, `engine=f5\|xtts\|elevenlabs\|...` |
-| `[pausa:1.5]` | `[pause:1.5]` | Silencio de N segundos | |
-| `[musica:fichero.mp3]` | `[music:...]`, `[música:...]` | Inserta un clip musical (avanza el tiempo) | `vol=0-1` (1.0), `fade=s` (0) |
-| `[musica:fichero.mp3 fondo]` | `bg`, `background` | Música de fondo bajo las voces siguientes, en bucle, con *ducking* | `vol=0-1` (0.15), `fade=s` (1.5) |
-| `[musica:stop]` | `fin`, `parar` | Detiene la música de fondo con un fundido | `fade=s` (1.5) |
+| `[voice:nombre]` | `[voz:nombre]` | Cambia de hablante hasta la siguiente etiqueta de voz | `lang=es\|en\|...`, `speed=1.1`, `engine=f5\|xtts\|elevenlabs\|...` |
+| `[pause:1.5]` | `[pausa:1.5]` | Silencio de N segundos | |
+| `[music:fichero.mp3]` | `[musica:...]`, `[música:...]` | Inserta un clip musical (avanza el tiempo) | `vol=0-1` (1.0), `fade=s` (0) |
+| `[music:fichero.mp3 bg]` | `background`, `fondo` | Música de fondo bajo las voces siguientes, en bucle, con *ducking* | `vol=0-1` (0.15), `fade=s` (1.5) |
+| `[music:stop]` | `fin`, `parar` | Detiene la música de fondo con un fundido | `fade=s` (1.5) |
 | `[sfx:fichero.wav]` | | Efecto superpuesto en ese punto (no avanza el tiempo) | `vol=0-1` (1.0) |
-| `[titulo:...]` | `[title:...]`, `[título:...]` | Metadato, no se pronuncia | |
+| `[title:...]` | `[titulo:...]`, `[título:...]` | Metadato, no se pronuncia | |
 
 - Las líneas que empiezan por `#` y los bloques `<!-- ... -->` (también de varias líneas) son
   comentarios y nunca suenan. Los corchetes que no son una etiqueta `[tipo:...]`, como las
   casillas `- [ ]`, son texto normal, y los enlaces Markdown `[texto](url)` se leen como "texto".
 - Una línea en blanco separa párrafos y añade una pausa corta.
 - Las rutas de música y efectos son relativas al guion; las rutas con espacios van entre comillas:
-  `[musica:"mis audios/intro.mp3"]`.
+  `[music:"mis audios/intro.mp3"]`.
+- Las etiquetas canónicas están en inglés, pero las etiquetas en castellano de la columna Alias
+  también se aceptan, así que los guiones antiguos siguen funcionando.
 - Los errores indican el número de línea. Prioridad: idioma = etiqueta > front matter > voz;
   motor = `--engine` > etiqueta > front matter > voz.
 
@@ -266,19 +285,19 @@ Ejemplo:
 title: Charlas en local
 lang: es
 ---
-[musica:assets/fondo.mp3 fondo vol=0.12]
-[voz:ana] Hola y bienvenidos a Charlas en local. Soy Ana.
-[voz:carlos speed=0.95] Y yo, Carlos. [pausa:0.8] Hoy: podcasts a partir de texto plano.
-[voz:emma lang=en] And in English, too!
-[musica:stop fade=3]
+[music:assets/fondo.mp3 bg vol=0.12]
+[voice:ana] Hola y bienvenidos a Charlas en local. Soy Ana.
+[voice:carlos speed=0.95] Y yo, Carlos. [pause:0.8] Hoy: podcasts a partir de texto plano.
+[voice:emma lang=en] And in English, too!
+[music:stop fade=3]
 ```
 
-Ejemplos listos para usar: [examples/ejemplo.md](examples/ejemplo.md) (castellano, con frases en
-inglés), [examples/english_episode.md](examples/english_episode.md) (inglés) y
+Ejemplos listos para usar: [examples/english_episode.md](examples/english_episode.md) (inglés),
+[examples/ejemplo.md](examples/ejemplo.md) (castellano, con frases en inglés) y
 [examples/ejemplo_dialogo.md](examples/ejemplo_dialogo.md) (diálogo bilingüe). Los guiones que
-guardas desde la app van a `guiones/`, que git ignora. La referencia
-completa, con más ejemplos, está en
-[skill/podcast-tts/references/formato-guion.md](skill/podcast-tts/references/formato-guion.md).
+guardas desde la app van a `guiones/`, que git ignora. La referencia completa, con más ejemplos,
+está en [skill/podcast-tts/references/script-format.md](skill/podcast-tts/references/script-format.md)
+(en inglés).
 
 ---
 
@@ -298,7 +317,7 @@ exacta) y `voice.json` (idioma, motor, velocidad, descripción). Voces de ejempl
 
 ### Añadir tu propia voz
 
-En la app: **Voces → Añadir voz**, sube o graba un clip y escribe su transcripción. Desde la línea
+En la app: **Voices → Add voice** (**Voces → Añadir voz** en castellano), sube o graba un clip y escribe su transcripción. Desde la línea
 de comandos:
 
 ```powershell
@@ -337,7 +356,7 @@ Las voces en la nube apuntan a una voz del proveedor en lugar de a un clip:
 | `dummy` | Tu PC | Tonos de prueba | | No es voz |
 | plugins | Depende | Depende | Depende | Lo que declare el plugin |
 
-Elige el motor por voz (`voice.json`), por línea (`[voz:ana engine=openai]`), por guion (`engine:`
+Elige el motor por voz (`voice.json`), por línea (`[voice:ana engine=openai]`), por guion (`engine:`
 en el front matter) o para toda la ejecución (`--engine`). `podcast-tts engines` muestra la
 licencia, el uso comercial y la configuración de cada uno. Para configurar los motores en la nube
 y repasar la lista de comprobación antes de publicar, lee
@@ -375,7 +394,7 @@ tus voces, lo valide y genere el MP3 con este proyecto.
 - A mano: `powershell -ExecutionPolicy Bypass -File scripts\install_skill.ps1` (crea un enlace en
   `%USERPROFILE%\.claude\skills\podcast-tts`; `-Copy` la copia en su lugar).
 - La skill está en [skill/podcast-tts/](skill/podcast-tts/) y se documenta en
-  [docs/SKILL.md](docs/SKILL.md).
+  [docs/SKILL.md](docs/SKILL.md) (en inglés).
 
 AudioGeneration funciona perfectamente sin ella.
 
@@ -470,8 +489,8 @@ están en `launcher.log` (junto al exe) y en `%LOCALAPPDATA%\AudioGeneration\des
 <details>
 <summary><b>La síntesis es muy lenta / no se usa CUDA</b></summary>
 
-Ejecuta `.venv\Scripts\python.exe scripts\check_env.py` (debe terminar en `TODO OK`) y mira la
-pestaña **Sistema**. Si tienes una GPU NVIDIA pero se instaló la variante CPU (por ejemplo, porque
+Ejecuta `.venv\Scripts\python.exe scripts\check_env.py` (debe terminar en `ALL OK`) y mira la
+pestaña **System** (Sistema). Si tienes una GPU NVIDIA pero se instaló la variante CPU (por ejemplo, porque
 faltaba el driver al instalar), actualiza el driver y ejecuta `bats\install_gpu.bat`.
 `PODCAST_TTS_DEVICE=cpu` o `cuda` fuerza el dispositivo. La primera generación siempre es más
 lenta porque se cargan los modelos.

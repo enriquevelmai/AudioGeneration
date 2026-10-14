@@ -1,28 +1,28 @@
 @echo off
 REM ====================================================================
-REM  AudioGeneration - Crea los accesos directos "AudioGeneration" en el
-REM  Escritorio y en el menu Inicio del usuario (sin admin).
+REM  AudioGeneration - Creates the "AudioGeneration" shortcuts on the
+REM  user's Desktop and Start menu (no admin).
 REM
-REM  Apuntan a AudioGeneration.exe si existe (bats\build_launcher.bat) y,
-REM  si no, a bats\run.bat. Usan el icono assets\icon.ico.
+REM  They point to AudioGeneration.exe if it exists (bats\build_launcher.bat)
+REM  and otherwise to bats\run.bat. They use the assets\icon.ico icon.
 REM
-REM  Uso:   bats\create_shortcuts.bat                 (Escritorio y menu Inicio reales)
-REM         bats\create_shortcuts.bat C:\ruta\pruebas  (crea "Escritorio" y "Menu Inicio"
-REM                                                     dentro de esa carpeta; para pruebas)
-REM         bats\create_shortcuts.bat /y [carpeta]     (sin pause)
+REM  Usage: bats\create_shortcuts.bat                  (real Desktop and Start menu)
+REM         bats\create_shortcuts.bat C:\path\tests     (creates "Desktop" and "Start Menu"
+REM                                                     inside that folder; for testing)
+REM         bats\create_shortcuts.bat /y [folder]      (no pause)
 REM ====================================================================
 setlocal EnableExtensions DisableDelayedExpansion
 pushd "%~dp0.." 2>nul || (
-    echo ERROR: no se puede abrir la carpeta del proyecto: "%~dp0.."
-    echo   Si esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    echo ERROR: cannot open the project folder: "%~dp0.."
+    echo   If it is on a network path ^(\\server\folder^), copy it to a local disk.
     if /i not "%~1"=="/y" pause
     exit /b 1
 )
 if not exist "pyproject.toml" (
-    echo ERROR: no se encuentra pyproject.toml en "%CD%".
-    echo   - Si has abierto el zip sin extraerlo, extrae antes todo su contenido
-    echo     ^(clic derecho sobre el zip ^> Extraer todo^) y ejecuta el .bat desde ahi.
-    echo   - Si la carpeta esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    echo ERROR: pyproject.toml not found in "%CD%".
+    echo   - If you opened the zip without extracting it, extract all its contents first
+    echo     ^(right-click the zip ^> Extract All^) and run the .bat from there.
+    echo   - If the folder is on a network path ^(\\server\folder^), copy it to a local disk.
     popd
     if /i not "%~1"=="/y" pause
     exit /b 1
@@ -43,22 +43,22 @@ shift
 goto parse_args
 :args_done
 
-echo Creando accesos directos de AudioGeneration...
+echo Creating AudioGeneration shortcuts...
 if defined DEST (
     powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\create_shortcuts.ps1" -Root "%CD%" -Dest "%DEST%"
 ) else (
     powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\create_shortcuts.ps1" -Root "%CD%"
 )
 if errorlevel 1 (
-    echo ERROR: no se pudieron crear los accesos directos ^(ver arriba^).
+    echo ERROR: could not create the shortcuts ^(see above^).
     if not "%NONINTERACTIVE%"=="1" pause
     popd
     endlocal
     exit /b 1
 )
 if not exist "AudioGeneration.exe" (
-    echo   Nota: apuntan a bats\run.bat. Con el lanzador ^(bats\build_launcher.bat^) vuelve a
-    echo         ejecutar este script para que apunten a AudioGeneration.exe.
+    echo   Note: they point to bats\run.bat. Once you build the launcher ^(bats\build_launcher.bat^),
+    echo         run this script again so they point to AudioGeneration.exe.
 )
 if not "%NONINTERACTIVE%"=="1" pause
 popd

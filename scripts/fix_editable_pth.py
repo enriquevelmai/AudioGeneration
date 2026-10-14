@@ -1,19 +1,19 @@
-"""Hace que la instalación editable funcione en carpetas con acentos o ñ.
+"""Makes the editable install work in folders with accents or other non-ASCII characters.
 
-``uv sync`` instala ``podcast_tts`` en modo editable con un fichero ``.pth`` que contiene
-la ruta de ``src/`` en UTF-8. Python 3.11 lee los ``.pth`` con la codificación ANSI de
-Windows (cp1252), incluso con ``PYTHONUTF8=1``, así que en una ruta como
-``C:\\Users\\José\\AudioGeneration`` la ruta sale corrupta y ``import podcast_tts`` falla.
+``uv sync`` installs ``podcast_tts`` in editable mode with a ``.pth`` file that contains
+the path of ``src/`` in UTF-8. Python 3.11 reads ``.pth`` files with the Windows ANSI
+code page (cp1252), even with ``PYTHONUTF8=1``, so with a path such as
+``C:\\Users\\José\\AudioGeneration`` the path gets corrupted and ``import podcast_tts`` fails.
 
-Este script sustituye el contenido de ese ``.pth`` por una línea ``import`` solo con ASCII
-que calcula la ruta en tiempo de arranque a partir de ``sys.prefix`` (``<proyecto>\\.venv``),
-de modo que no depende de la codificación ni de dónde esté la carpeta.
+This script replaces the contents of that ``.pth`` with an ASCII-only ``import`` line
+that computes the path at startup from ``sys.prefix`` (``<project>\\.venv``),
+so it depends neither on the encoding nor on where the folder is.
 
-Lo ejecutan bats\\install.bat, bats\\update.bat e install_gpu.bat después de ``uv sync``::
+bats\\install.bat, bats\\update.bat and install_gpu.bat run it after ``uv sync``::
 
     .venv\\Scripts\\python.exe -I -S scripts\\fix_editable_pth.py
 
-(``-S`` porque el ``.pth`` roto podría estropear el arranque normal.) Es idempotente.
+(``-S`` because the broken ``.pth`` could break normal startup.) It is idempotent.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SITE_PACKAGES = ROOT / ".venv" / "Lib" / "site-packages"
 
-#: Línea ASCII que añade <carpeta de .venv>/../src a sys.path si existe.
+#: ASCII line that adds <.venv folder>/../src to sys.path if it exists.
 PTH_LINE = (
     "import os, sys; [sys.path.append(p) for p in "
     "[os.path.join(os.path.dirname(sys.prefix), 'src')] "
@@ -33,14 +33,14 @@ PTH_LINE = (
 
 
 def editable_pth_files(site_packages: Path = SITE_PACKAGES) -> list[Path]:
-    """Ficheros ``.pth`` de la instalación editable de podcast_tts."""
+    """``.pth`` files of the podcast_tts editable install."""
     if not site_packages.is_dir():
         return []
     return sorted(p for p in site_packages.glob("*.pth") if "podcast_tts" in p.name)
 
 
 def fix(site_packages: Path = SITE_PACKAGES) -> int:
-    """Reescribe los ``.pth`` editables. Devuelve cuántos ha cambiado."""
+    """Rewrites the editable ``.pth`` files. Returns how many were changed."""
     changed = 0
     for pth in editable_pth_files(site_packages):
         current = pth.read_bytes()
@@ -54,10 +54,10 @@ def fix(site_packages: Path = SITE_PACKAGES) -> int:
 def main() -> int:
     files = editable_pth_files()
     if not files:
-        print("  (no hay instalacion editable de podcast_tts: nada que ajustar)")
+        print("  (no editable install of podcast_tts: nothing to adjust)")
         return 0
     n = fix()
-    print(f"  Instalacion editable ajustada para rutas con acentos ({n} fichero(s) .pth).")
+    print(f"  Editable install adjusted for paths with accents ({n} .pth file(s)).")
     return 0
 
 
