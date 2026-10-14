@@ -6,3 +6,7 @@ models/
 .cache/
 *.egg-info/
 .pytest_cache/
+# Claves de API (ver .env.example)
+.env
+.env.tmp
+.env.local
