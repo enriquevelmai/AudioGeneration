@@ -8,6 +8,7 @@ Ejemplos::
     python -m podcast_tts voices add ana clip.wav --text "Transcripción del clip" --lang es
     python -m podcast_tts voices remove ana
     python -m podcast_tts ui [--port 7860] [--host 127.0.0.1] [--share]
+    python -m podcast_tts desktop [--browser] [--debug]
     python -m podcast_tts engines [--json]
     python -m podcast_tts config show | set OPENAI_API_KEY | unset OPENAI_API_KEY
     python -m podcast_tts voices add nova --engine openai --provider-voice-id nova --lang es
@@ -275,6 +276,12 @@ def _cmd_ui(args: argparse.Namespace) -> int:
     return run_from_args(args)
 
 
+def _cmd_desktop(args: argparse.Namespace) -> int:
+    from .desktop import run_from_args
+
+    return run_from_args(args)
+
+
 def _cmd_models_list(args: argparse.Namespace) -> int:
     from .models import MODELS
 
@@ -443,6 +450,13 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument("--share", action="store_true", help="crea un enlace público temporal de Gradio")
     u.add_argument("--inbrowser", action="store_true", help="abre el navegador al arrancar")
     u.set_defaults(func=_cmd_ui)
+
+    from .desktop import build_arg_parser as desktop_args
+
+    dk = sub.add_parser("desktop", parents=[voices_dir],
+                        help="abre la app de escritorio (ventana nativa; requiere el extra desktop)")
+    desktop_args(dk)
+    dk.set_defaults(func=_cmd_desktop)
 
     m = sub.add_parser("models", help="lista, comprueba y descarga los modelos de los motores locales")
     msub = m.add_subparsers(dest="models_command", required=True, metavar="acción")
