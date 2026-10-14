@@ -44,6 +44,7 @@ from .assembler import (
     synthesize_speech,
 )
 from . import config as config_mod
+from ._warnings import silence_noisy_warnings
 from .engines import EngineError, engine_info, engine_kind, engine_names
 from .licensing import engines_in_script, license_notice
 from .script_parser import (
@@ -388,6 +389,7 @@ def generate_events(
         try:
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
+                silence_noisy_warnings()
                 result["value"] = run_generation(text, engine_choice, out_name, fmt, bitrate,
                                                  normalize, cfg, callback)
             result["warnings"] = [str(w.message) for w in caught]
@@ -559,6 +561,7 @@ def create_voice(name: str, audio_path: str | None, transcript: str, lang: str, 
     try:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
+            silence_noisy_warnings()
             voice = add_voice(name, audio_path or None, transcript or "", lang=lang or "es",
                               engine=engine or "f5", description=description or "",
                               xtts_speaker=speaker, speed=float(speed or 1.0),

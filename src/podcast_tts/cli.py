@@ -79,11 +79,16 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     if not args.no_license_notice:
         _print_license_notice(script, args)
     _eprint(f"Generando {output} a partir de {script}...")
+    info: dict[str, float] = {}
     path = generate(
         script, output, voices_dir=args.voices_dir, options=options, progress=progress,
-        max_chars=args.max_chars, bitrate=args.bitrate,
+        max_chars=args.max_chars, bitrate=args.bitrate, info=info,
     )
-    _eprint(f"Listo: {path} ({time.perf_counter() - started:.1f} s)")
+    elapsed = time.perf_counter() - started
+    if "duration" in info:
+        _eprint(f"Listo: {path} — duración {info['duration']:.1f} s, generado en {elapsed:.1f} s")
+    else:
+        _eprint(f"Listo: {path} — generado en {elapsed:.1f} s")
     return 0
 
 

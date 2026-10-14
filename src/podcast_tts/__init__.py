@@ -12,6 +12,10 @@ def _read_version() -> str:
 
 __version__ = _read_version()
 
+from ._warnings import silence_noisy_warnings  # noqa: E402
+
+silence_noisy_warnings()
+
 from .script_parser import (  # noqa: E402
     Music,
     ParsedScript,
