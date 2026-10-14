@@ -53,7 +53,11 @@ Fija el título (metadato); no se sintetiza.
 
 ## 4. Reglas de procesado
 
-- Línea que empieza (tras espacios) por `#` o `<!--`: comentario completo, aunque contenga etiquetas.
+- Línea que empieza (tras espacios) por `#`: comentario completo, aunque contenga etiquetas.
+- `<!-- ... -->`: comentario HTML; puede ocupar varias líneas o ir en mitad de una, y no suena.
+  Un `<!--` sin cerrar es un error.
+- Los corchetes que no son `[tipo:...]` (casillas `- [ ]`, `[risas]`) se leen como texto, y los
+  enlaces `[texto](url)` se leen como "texto". `[palabra:...]` con un tipo desconocido es error.
   Útil para estructura (`# Sección 2`) y para desactivar música (`# [musica:intro.mp3]`).
 - Línea vacía: termina el párrafo e inserta `paragraph_pause` antes del siguiente texto.
 - Saltos de línea simples dentro de un párrafo se unen con espacio.

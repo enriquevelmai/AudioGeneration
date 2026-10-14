@@ -98,7 +98,8 @@ paragraph_pause: 0.4  # pausa entre párrafos en s (alias: pausa_parrafo)
 | `[titulo:texto]` | `[title:]`, `[título:]` | Metadato; no suena | `[titulo:Episodio 3]` |
 
 Reglas clave:
-- Líneas que empiezan por `#` o `<!--` son comentarios (no suenan aunque tengan etiquetas).
+- Líneas que empiezan por `#` y bloques `<!-- ... -->` (también de varias líneas) son comentarios
+  (no suenan aunque tengan etiquetas).
 - Línea en blanco = nuevo párrafo + pausa corta (0.4 s).
 - Rutas de música/sfx relativas al guion o absolutas; con espacios, entre comillas: `[musica:"mis audios/a.mp3"]`.
 - Etiqueta o atributo desconocido → error con número de línea.

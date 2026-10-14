@@ -2,10 +2,11 @@
 REM ====================================================================
 REM  AudioGeneration - Empaqueta el zip de release para Windows.
 REM
-REM  Resultado: dist\AudioGeneration-v<version>-windows.zip con
-REM    - el codigo versionado en HEAD (git archive: sin .venv, output,
-REM      .cache, .env ni nada que no este en git), y
-REM    - AudioGeneration.exe en la raiz del zip (si falta, se compila con
+REM  Resultado: dist\AudioGeneration-v<version>-windows.zip con todo dentro
+REM  de una carpeta AudioGeneration\ (al extraerlo no se mezcla con otros ficheros):
+REM    - el codigo versionado en HEAD (git archive solo empaqueta ficheros
+REM      versionados: sin .venv, output, .cache ni .env), y
+REM    - AudioGeneration\AudioGeneration.exe (si falta, se compila con
 REM      bats\build_launcher.bat).
 REM  La version se lee de pyproject.toml.
 REM
@@ -13,8 +14,22 @@ REM  OJO: git archive empaqueta HEAD; los cambios sin commitear NO entran.
 REM
 REM  Uso:   bats\package_release.bat        bats\package_release.bat /y   (sin pause)
 REM ====================================================================
-setlocal EnableExtensions
-cd /d "%~dp0.."
+setlocal EnableExtensions DisableDelayedExpansion
+pushd "%~dp0.." 2>nul || (
+    echo ERROR: no se puede abrir la carpeta del proyecto: "%~dp0.."
+    echo   Si esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    if /i not "%~1"=="/y" pause
+    exit /b 1
+)
+if not exist "pyproject.toml" (
+    echo ERROR: no se encuentra pyproject.toml en "%CD%".
+    echo   - Si has abierto el zip sin extraerlo, extrae antes todo su contenido
+    echo     ^(clic derecho sobre el zip ^> Extraer todo^) y ejecuta el .bat desde ahi.
+    echo   - Si la carpeta esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    popd
+    if /i not "%~1"=="/y" pause
+    exit /b 1
+)
 set "NONINTERACTIVE=0"
 if "%PODCAST_TTS_NONINTERACTIVE%"=="1" set "NONINTERACTIVE=1"
 if /i "%~1"=="/y" set "NONINTERACTIVE=1"
@@ -65,7 +80,7 @@ echo.
 echo [2/3] git archive HEAD -^> %ZIP%
 if not exist "dist" mkdir "dist"
 if exist "%ZIP%" del /q "%ZIP%"
-git archive --format=zip -o "%ZIP%" HEAD
+git archive --format=zip --prefix=AudioGeneration/ -o "%ZIP%" HEAD
 if errorlevel 1 (
     echo ERROR en git archive.
     goto fail
@@ -73,14 +88,16 @@ if errorlevel 1 (
 
 REM --------------------------------------------------------------------
 echo.
-echo [3/3] Anadiendo AudioGeneration.exe a la raiz del zip y comprobando el contenido...
+echo [3/3] Anadiendo AudioGeneration.exe al zip y comprobando el contenido...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem;" ^
-  "$z=[IO.Compression.ZipFile]::Open((Resolve-Path '%ZIP%').Path,'Update');" ^
-  "try { [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z,(Resolve-Path 'AudioGeneration.exe').Path,'AudioGeneration.exe','Optimal');" ^
-  " $bad=@($z.Entries | ? { $_.FullName -match '^(\.venv|output|\.cache|models|build|dist)/|^\.env$|(^|/)CLAUDE\.md$' });" ^
+  "$z=[IO.Compression.ZipFile]::Open((Resolve-Path -LiteralPath '%ZIP%').Path,'Update');" ^
+  "try { [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z,(Resolve-Path -LiteralPath 'AudioGeneration.exe').Path,'AudioGeneration/AudioGeneration.exe','Optimal');" ^
+  " $out=@($z.Entries | ? { -not $_.FullName.StartsWith('AudioGeneration/') });" ^
+  " if ($out.Count) { Write-Host ('  ERROR: entradas fuera de AudioGeneration/: ' + ($out.FullName -join ', ')); exit 3 };" ^
+  " $bad=@($z.Entries | ? { $_.FullName -match '^AudioGeneration/((\.venv|output|\.cache|models|build|dist)/|\.env$)' });" ^
   " if ($bad.Count) { Write-Host ('  ERROR: entradas que no deberian estar: ' + ($bad.FullName -join ', ')); exit 3 };" ^
-  " Write-Host ('  ' + $z.Entries.Count + ' entradas; AudioGeneration.exe en la raiz.') } finally { $z.Dispose() }"
+  " Write-Host ('  ' + $z.Entries.Count + ' entradas, todo dentro de AudioGeneration/.') } finally { $z.Dispose() }"
 if errorlevel 1 (
     echo ERROR preparando el zip.
     goto fail
@@ -93,10 +110,12 @@ echo  Listo: %ZIP% ^(%ZIP_SIZE% bytes^)
 echo  Subelo como asset de la release v%VERSION% en GitHub.
 echo ====================================================================
 if not "%NONINTERACTIVE%"=="1" pause
+popd
 endlocal
 exit /b 0
 
 :fail
 if not "%NONINTERACTIVE%"=="1" pause
+popd
 endlocal
 exit /b 1

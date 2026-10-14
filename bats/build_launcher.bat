@@ -12,8 +12,25 @@ REM  mano usa accesos directos (bats\create_shortcuts.bat).
 REM
 REM  Uso:   bats\build_launcher.bat        bats\build_launcher.bat /y   (sin pause)
 REM ====================================================================
-setlocal EnableExtensions
-cd /d "%~dp0.."
+setlocal EnableExtensions DisableDelayedExpansion
+pushd "%~dp0.." 2>nul || (
+    echo ERROR: no se puede abrir la carpeta del proyecto: "%~dp0.."
+    echo   Si esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    if /i not "%~1"=="/y" pause
+    exit /b 1
+)
+if not exist "pyproject.toml" (
+    echo ERROR: no se encuentra pyproject.toml en "%CD%".
+    echo   - Si has abierto el zip sin extraerlo, extrae antes todo su contenido
+    echo     ^(clic derecho sobre el zip ^> Extraer todo^) y ejecuta el .bat desde ahi.
+    echo   - Si la carpeta esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    popd
+    if /i not "%~1"=="/y" pause
+    exit /b 1
+)
+REM El PYTHONPATH del usuario podria colar modulos ajenos en el exe.
+set "PYTHONPATH="
+set "PYTHONHOME="
 set "NONINTERACTIVE=0"
 if "%PODCAST_TTS_NONINTERACTIVE%"=="1" set "NONINTERACTIVE=1"
 if /i "%~1"=="/y" set "NONINTERACTIVE=1"
@@ -67,10 +84,12 @@ echo  Accesos directos en el Escritorio y el menu Inicio:
 echo      bats\create_shortcuts.bat
 echo ====================================================================
 if not "%NONINTERACTIVE%"=="1" pause
+popd
 endlocal
 exit /b 0
 
 :fail
 if not "%NONINTERACTIVE%"=="1" pause
+popd
 endlocal
 exit /b 1

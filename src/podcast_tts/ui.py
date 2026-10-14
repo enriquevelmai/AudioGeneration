@@ -2,7 +2,11 @@
 
 Lanzar con::
 
-    python -m podcast_tts ui [--port 7860] [--host 127.0.0.1] [--share]
+    python -m podcast_tts ui [--port 7860] [--host 127.0.0.1] [--share] [--auth usuario:clave]
+
+Fuera de 127.0.0.1/localhost/::1, o con ``--share``, la UI exige usuario y clave
+(``--auth`` o la variable ``PODCAST_TTS_AUTH``) y funciona en *modo remoto*: sin la
+pestaña Ajustes (claves de API) y sin rutas de audio absolutas o con ``..``.
 
 La app arranca sin cargar ningún modelo: F5-TTS / XTTS se cargan de forma
 perezosa en la primera síntesis (``engines.get_engine``). La lista de motores es
@@ -16,6 +20,8 @@ La lógica está en funciones Python normales (``validate_script``,
 from __future__ import annotations
 
 import argparse
+import ipaddress
+import os
 import queue
 import re
 import threading
@@ -38,6 +44,7 @@ from .assembler import (
     synthesize_speech,
 )
 from . import config as config_mod
+from ._warnings import silence_noisy_warnings
 from .engines import EngineError, engine_info, engine_kind, engine_names
 from .licensing import engines_in_script, license_notice
 from .script_parser import (
@@ -61,18 +68,24 @@ from .voices import (
 )
 
 __all__ = [
+    "AUTH_ENV",
     "ENGINE_AUTO",
+    "RemoteAuthError",
     "UIConfig",
     "build_app",
     "clear_cache",
     "delete_api_key",
     "delete_voice",
+    "display_path",
     "engine_choices",
     "engines_table",
     "format_error",
     "generate_events",
     "generation_license_notice",
+    "is_loopback_host",
     "main",
+    "parse_auth",
+    "resolve_auth",
     "open_output_folder",
     "output_files",
     "run_generation",
@@ -133,7 +146,8 @@ HELP_MD = """
 | `[titulo:...]` | `[title:...]` | Metadato (no se sintetiza) | — |
 
 - *Front matter* opcional al principio: `title`, `lang`, `default_voice`, `engine`, `paragraph_pause`.
-- Las líneas que empiezan por `#` o `<!--` son comentarios.
+- Las líneas que empiezan por `#` y los bloques `<!-- ... -->` (también de varias líneas) son
+  comentarios.
 - Una línea vacía separa párrafos (pausa corta automática).
 - Rutas de música/sfx relativas a `examples/`, al directorio actual o al proyecto (o absolutas).
 """
@@ -154,6 +168,9 @@ class UIConfig:
     scripts_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "guiones")
     script_base_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "examples")
     max_chars: int = DEFAULT_MAX_CHARS
+    # Modo remoto (UI accesible desde otros equipos): sin pestaña Ajustes y sin rutas de
+    # audio externas. Lo activa ``launch``/``run_from_args`` según ``--host``/``--share``.
+    remote: bool = False
 
     def __post_init__(self) -> None:
         self.voices_dir = Path(self.voices_dir)
@@ -161,6 +178,20 @@ class UIConfig:
         self.cache_dir = Path(self.cache_dir) if self.cache_dir else None
         self.scripts_dir = Path(self.scripts_dir)
         self.script_base_dir = Path(self.script_base_dir)
+
+
+def display_path(path: str | Path | None) -> str:
+    """Ruta para mostrar en la UI: relativa a la raíz del proyecto si está dentro de él.
+
+    Evita enseñar rutas completas del usuario (``C:\\Users\\...``) en la página.
+    """
+    if path is None:
+        return ""
+    p = Path(path)
+    try:
+        return str(p.resolve().relative_to(PROJECT_ROOT.resolve()))
+    except (ValueError, OSError):
+        return str(p)
 
 
 def format_error(exc: BaseException) -> str:
@@ -263,7 +294,7 @@ def validate_script(text: str, engine_choice: str | None, cfg: UIConfig
             if override == "dummy":
                 lines.append(f"- `{name}`: no existe (con el motor *dummy* no importa)")
             else:
-                lines.append(f"- ⚠️ `{name}`: **NO EXISTE** en {cfg.voices_dir}")
+                lines.append(f"- ⚠️ `{name}`: **NO EXISTE** en {display_path(cfg.voices_dir)}")
             continue
         engine = override or script.meta.default_engine or voice.engine
         if voice.provider_voice_id:
@@ -324,6 +355,7 @@ def run_generation(
         target_lufs=-16.0 if normalize else None,
         cache_dir=cfg.cache_dir,
         base_dir=cfg.script_base_dir,
+        allow_external_paths=not cfg.remote,
     )
     output = cfg.output_dir / f"{_safe_name(out_name)}.{fmt}"
     with _SYNTH_LOCK:
@@ -331,7 +363,7 @@ def run_generation(
     tags = {"title": script.meta.title} if script.meta.title else None
     path = export_audio(audio, output, bitrate=bitrate or "192k", tags=tags)
     elapsed = time.perf_counter() - started
-    summary = (f"Listo: {path} — duración {len(audio) / 1000:.1f} s, "
+    summary = (f"Listo: {display_path(path)} — duración {len(audio) / 1000:.1f} s, "
                f"generado en {elapsed:.1f} s")
     return path, summary
 
@@ -358,6 +390,7 @@ def generate_events(
         try:
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
+                silence_noisy_warnings()
                 result["value"] = run_generation(text, engine_choice, out_name, fmt, bitrate,
                                                  normalize, cfg, callback)
             result["warnings"] = [str(w.message) for w in caught]
@@ -424,7 +457,7 @@ def save_script(text: str, name: str, cfg: UIConfig) -> tuple[str | None, str]:
     cfg.scripts_dir.mkdir(parents=True, exist_ok=True)
     path = cfg.scripts_dir / f"{_safe_name(name, 'guion')}.md"
     path.write_text(text, encoding="utf-8")
-    return str(path), f"💾 Guion guardado en `{path}`"
+    return str(path), f"💾 Guion guardado en `{display_path(path)}`"
 
 
 # --------------------------------------------------------------------------- #
@@ -433,6 +466,8 @@ def save_script(text: str, name: str, cfg: UIConfig) -> tuple[str | None, str]:
 
 VOICE_HEADERS = ["Nombre", "Idioma", "Motor", "Descripción", "Duración ref (s)", "Speaker XTTS",
                  "ID proveedor", "Speed"]
+# Anchos mínimos para que las cabeceras no se partan letra a letra.
+VOICE_COLUMN_WIDTHS = ["110px", "80px", "100px", "220px", "120px", "150px", "150px", "80px"]
 
 
 def _wav_seconds(path: Path) -> float | None:
@@ -492,7 +527,7 @@ def test_voice(name: str | None, engine_choice: str | None, phrase: str | None, 
         text = (phrase or "").strip() or TEST_PHRASES.get(voice.lang, TEST_PHRASES["en"])
         seg = Speech(voice=name, text=text, lang=voice.lang)
         options = AssembleOptions(engine_override=_engine_override(engine_choice),
-                                  cache_dir=cfg.cache_dir)
+                                  cache_dir=cfg.cache_dir, allow_external_paths=not cfg.remote)
         started = time.perf_counter()
         with _SYNTH_LOCK:
             audio, sr = synthesize_speech(seg, voices_dir=cfg.voices_dir, options=options)
@@ -527,6 +562,7 @@ def create_voice(name: str, audio_path: str | None, transcript: str, lang: str, 
     try:
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
+            silence_noisy_warnings()
             voice = add_voice(name, audio_path or None, transcript or "", lang=lang or "es",
                               engine=engine or "f5", description=description or "",
                               xtts_speaker=speaker, speed=float(speed or 1.0),
@@ -534,7 +570,7 @@ def create_voice(name: str, audio_path: str | None, transcript: str, lang: str, 
                               provider_voice_id=provider_id if cloud else None)
     except Exception as exc:  # noqa: BLE001
         return f"❌ {format_error(exc)}"
-    msg = [f"✅ Voz '{voice.name}' guardada en `{voice.path}`"]
+    msg = [f"✅ Voz '{voice.name}' guardada en `{display_path(voice.path)}`"]
     msg += [f"⚠️ {w.message}" for w in caught]
     return "\n\n".join(msg)
 
@@ -637,11 +673,11 @@ def system_status(cfg: UIConfig) -> str:
         _engines_status(),
         "",
         "### Rutas",
-        f"- Voces: `{cfg.voices_dir}` ({n_voices} voces)",
-        f"- Caché de síntesis: `{cfg.cache_dir or '(desactivada)'}` "
+        f"- Voces: `{display_path(cfg.voices_dir)}` ({n_voices} voces)",
+        f"- Caché de síntesis: `{display_path(cfg.cache_dir) or '(desactivada)'}` "
         f"({n_cache} frases, {_mb(size_cache)})",
-        f"- Salida: `{cfg.output_dir}` ({n_out} ficheros, {_mb(size_out)})",
-        f"- Guiones guardados: `{cfg.scripts_dir}`",
+        f"- Salida: `{display_path(cfg.output_dir)}` ({n_out} ficheros, {_mb(size_out)})",
+        f"- Guiones guardados: `{display_path(cfg.scripts_dir)}`",
     ])
 
 
@@ -666,10 +702,13 @@ def open_output_folder(cfg: UIConfig, opener: Callable[[str], Any] | None = None
     ``opener`` permite sustituir el lanzador en los tests.
     """
     folder = cfg.output_dir
+    if cfg.remote:
+        return ("ℹ️ En modo remoto no se abre la carpeta en el servidor: descarga los audios "
+                "desde la propia página.")
     try:
         folder.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        return f"❌ No se pudo crear `{folder}`: {exc}"
+        return f"❌ No se pudo crear `{display_path(folder)}`: {exc}"
     if opener is None:
         import os
         import subprocess
@@ -683,8 +722,8 @@ def open_output_folder(cfg: UIConfig, opener: Callable[[str], Any] | None = None
     try:
         opener(str(folder))
     except Exception as exc:  # noqa: BLE001 - se informa al usuario
-        return f"❌ No se pudo abrir `{folder}`: {exc}"
-    return f"📂 Abierta la carpeta de salida: `{folder}`"
+        return f"❌ No se pudo abrir `{display_path(folder)}`: {exc}"
+    return f"📂 Abierta la carpeta de salida: `{display_path(folder)}`"
 
 
 def output_files(cfg: UIConfig) -> list[str]:
@@ -701,6 +740,7 @@ def output_files(cfg: UIConfig) -> list[str]:
 
 ENGINE_HEADERS = ["Motor", "Tipo", "Licencia", "Uso comercial", "Configurado", "Disponible",
                   "Notas"]
+ENGINE_COLUMN_WIDTHS = ["100px", "70px", "170px", "120px", "130px", "100px", "360px"]
 
 
 def _yes_no(value: Any) -> str:
@@ -730,7 +770,7 @@ def api_key_names() -> list[str]:
 
 def settings_status() -> str:
     """Estado de las claves en Markdown (siempre enmascaradas)."""
-    lines = [f"Fichero: `{config_mod.env_file_path()}` (ignorado por git)", ""]
+    lines = [f"Fichero: `{display_path(config_mod.env_file_path())}` (ignorado por git)", ""]
     for st in config_mod.key_status(api_key_names()):
         if st.is_set:
             where = "variable de entorno" if st.source == "entorno" else ".env"
@@ -778,7 +818,7 @@ def delete_api_key(name: str | None) -> str:
 
 def _outputs_summary(cfg: UIConfig) -> tuple[str, list[str] | None]:
     files = output_files(cfg)
-    return f"**{len(files)}** ficheros en `{cfg.output_dir}`", (files or None)
+    return f"**{len(files)}** ficheros en `{display_path(cfg.output_dir)}`", (files or None)
 
 
 # --------------------------------------------------------------------------- #
@@ -881,8 +921,7 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                     saved_file = gr.File(label="Guion guardado", visible=False)
                 with gr.Column(scale=2):
                     engine = gr.Dropdown(engine_choices(), value=ENGINE_AUTO, label="Motor")
-                    engine_notice = gr.Markdown(
-                        lambda: generation_license_notice(initial_script, ENGINE_AUTO, cfg))
+                    engine_notice = gr.Markdown()
                     out_name = gr.Textbox(value="episodio", label="Nombre del fichero de salida",
                                           max_lines=1)
                     with gr.Row():
@@ -908,28 +947,31 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
             validate_btn.click(lambda t, e: validate_script(t, e, cfg), [editor, engine],
                                [segments, report], api_name="validar")
             _notice = lambda t, e: generation_license_notice(t, e, cfg)  # noqa: E731
-            engine.change(_notice, [editor, engine], engine_notice)
-            editor.blur(_notice, [editor, engine], engine_notice)
-            validate_btn.click(_notice, [editor, engine], engine_notice)
+            engine.change(_notice, [editor, engine], engine_notice, api_visibility="private")
+            editor.blur(_notice, [editor, engine], engine_notice, api_visibility="private")
+            validate_btn.click(_notice, [editor, engine], engine_notice, api_visibility="private")
 
             def _generate(t, e, n, f, b, norm, progress=gr.Progress()):
                 yield from generate_events(t, e, n, f, b, norm, cfg, progress)
 
             generate_btn.click(_generate, [editor, engine, out_name, fmt, bitrate, normalize],
                                [player, download, log], api_name="generar")
-            load_file.upload(load_script_file, load_file, editor)
-            open_out_btn.click(lambda: open_output_folder(cfg), None, open_out_msg)
+            load_file.upload(load_script_file, load_file, editor, api_visibility="private")
+            open_out_btn.click(lambda: open_output_folder(cfg), None, open_out_msg,
+                               api_visibility="private")
 
             def _save(t, n):
                 path, msg = save_script(t, n, cfg)
                 return msg, gr.update(value=path, visible=path is not None)
 
-            save_btn.click(_save, [editor, save_name], [save_msg, saved_file])
+            save_btn.click(_save, [editor, save_name], [save_msg, saved_file],
+                           api_visibility="private")
 
         # ----------------------------------------------------------- Voces
         with gr.Tab("Voces") as voices_tab:
-            voices_df = gr.Dataframe(value=lambda: voices_table(cfg), headers=VOICE_HEADERS,
-                                     label="Voces disponibles", interactive=False, wrap=True)
+            voices_df = gr.Dataframe(headers=VOICE_HEADERS,
+                                     label="Voces disponibles", interactive=False, wrap=True,
+                                     column_widths=VOICE_COLUMN_WIDTHS)
             with gr.Row():
                 refresh_voices = gr.Button("🔄 Actualizar")
             with gr.Row():
@@ -986,14 +1028,17 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                 value = selected if selected in names else None
                 return voices_table(cfg), gr.update(choices=names, value=value)
 
-            refresh_voices.click(_refresh, [voice_sel], [voices_df, voice_sel])
-            voices_tab.select(_refresh, [voice_sel], [voices_df, voice_sel])
+            refresh_voices.click(_refresh, [voice_sel], [voices_df, voice_sel],
+                                 api_visibility="private")
+            voices_tab.select(_refresh, [voice_sel], [voices_df, voice_sel],
+                              api_visibility="private")
 
             def _select(name):
                 path, info = voice_details(name, cfg)
                 return path, info, gr.update(visible=False), ""
 
-            voice_sel.change(_select, voice_sel, [ref_player, voice_info, confirm_row, delete_msg])
+            voice_sel.change(_select, voice_sel, [ref_player, voice_info, confirm_row, delete_msg],
+                             api_visibility="private")
             test_btn.click(lambda n, e, p: test_voice(n, e, p, cfg),
                            [voice_sel, test_engine, test_phrase], [test_player, test_msg],
                            api_name="probar_voz")
@@ -1004,16 +1049,18 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                 return (gr.update(visible=True),
                         f"¿Seguro que quieres eliminar **{name}**? No se puede deshacer.", "")
 
-            delete_btn.click(_ask_delete, voice_sel, [confirm_row, confirm_md, delete_msg])
+            delete_btn.click(_ask_delete, voice_sel, [confirm_row, confirm_md, delete_msg],
+                             api_visibility="private")
             confirm_no.click(lambda: (gr.update(visible=False), "Cancelado."), None,
-                             [confirm_row, delete_msg])
+                             [confirm_row, delete_msg], api_visibility="private")
 
             def _do_delete(name):
                 msg = delete_voice(name, cfg)
                 df, dd = _refresh(None)
                 return gr.update(visible=False), msg, df, dd
 
-            confirm_yes.click(_do_delete, voice_sel, [confirm_row, delete_msg, voices_df, voice_sel])
+            confirm_yes.click(_do_delete, voice_sel, [confirm_row, delete_msg, voices_df, voice_sel],
+                              api_visibility="private")
 
             def _add(name, audio, text, lang, eng, desc, speed, speaker, overwrite, provider_id):
                 msg = create_voice(name, audio, text, lang, eng, desc, speed, speaker, overwrite,
@@ -1023,7 +1070,7 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
 
             add_btn.click(_add, [new_name, new_audio, new_text, new_lang, new_engine, new_desc,
                                  new_speed, new_speaker, new_overwrite, new_provider_id],
-                          [add_msg, voices_df, voice_sel])
+                          [add_msg, voices_df, voice_sel], api_visibility="private")
 
             def _engine_form(eng):
                 cloud = _is_cloud(eng)
@@ -1031,7 +1078,8 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                         gr.update(visible=not cloud), gr.update(visible=not cloud))
 
             new_engine.change(_engine_form, new_engine,
-                              [new_provider_id, new_audio, new_text, new_speaker])
+                              [new_provider_id, new_audio, new_text, new_speaker],
+                              api_visibility="private")
 
         # ----------------------------------------------------------- Sistema
         with gr.Tab("Sistema") as system_tab:
@@ -1041,7 +1089,8 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                 clear_btn = gr.Button("🧹 Vaciar caché de síntesis")
                 sys_open_out = gr.Button("📂 Abrir carpeta de salida")
             sys_msg = gr.Markdown()
-            sys_open_out.click(lambda: open_output_folder(cfg), None, sys_msg)
+            sys_open_out.click(lambda: open_output_folder(cfg), None, sys_msg,
+                               api_visibility="private")
             out_count = gr.Markdown()
             out_files = gr.File(label="Ficheros en output/", file_count="multiple",
                                 interactive=False)
@@ -1050,67 +1099,155 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                 count, files = _outputs_summary(cfg)
                 return system_status(cfg), count, files
 
-            refresh_sys.click(_sys, None, [status, out_count, out_files])
-            system_tab.select(_sys, None, [status, out_count, out_files])
+            refresh_sys.click(_sys, None, [status, out_count, out_files], api_visibility="private")
+            system_tab.select(_sys, None, [status, out_count, out_files], api_visibility="private")
 
             def _clear():
                 msg = clear_cache(cfg)
                 return (msg, *_sys())
 
-            clear_btn.click(_clear, None, [sys_msg, status, out_count, out_files])
+            clear_btn.click(_clear, None, [sys_msg, status, out_count, out_files],
+                            api_visibility="private")
 
         # ----------------------------------------------------------- Ajustes
-        with gr.Tab("Ajustes") as settings_tab:
-            gr.Markdown(
-                "### Claves de API de los motores en la nube\n"
-                "Se guardan en el fichero `.env` del proyecto (ignorado por git) y solo se "
-                "muestran enmascaradas. Los motores locales no necesitan claves.")
-            keys_md = gr.Markdown(settings_status)
-            with gr.Row():
-                key_name = gr.Dropdown(api_key_names(), value=None, label="Variable",
-                                       allow_custom_value=True)
-                key_value = gr.Textbox(label="Valor", type="password", max_lines=1,
-                                       placeholder="pega aquí la clave")
-            with gr.Row():
-                key_save = gr.Button("💾 Guardar clave", variant="primary")
-                key_delete = gr.Button("🗑️ Borrar clave", variant="stop")
-            key_msg = gr.Markdown()
-            gr.Markdown(
-                "### Motores y licencias\n"
-                "Los pesos de **f5** (CC-BY-NC-4.0) y **xtts** (CPML) son de uso **no comercial**. "
-                "Para uso comercial usa un proveedor con plan de pago y revisa sus términos. "
-                "Clonar la voz de otra persona requiere su consentimiento. "
-                "Ver `docs/COMMERCIAL_USE.md`.")
-            engines_df = gr.Dataframe(value=engines_table, headers=ENGINE_HEADERS,
-                                      label="Motores", interactive=False, wrap=True)
-            refresh_settings = gr.Button("🔄 Actualizar")
+        if cfg.remote:
+            # Las claves de API no se pueden ver ni cambiar desde otros equipos.
+            with gr.Tab("Ajustes"):
+                gr.Markdown(
+                    "### Ajustes no disponibles en modo remoto\n"
+                    "Las claves de API solo se gestionan desde el propio equipo (UI en "
+                    "`127.0.0.1`) o con `python -m podcast_tts config set NOMBRE`.\n\n"
+                    "Los pesos de **f5** (CC-BY-NC-4.0) y **xtts** (CPML) son de uso "
+                    "**no comercial**. Ver `docs/COMMERCIAL_USE.md`.")
+        else:
+            _settings_tab(app, cfg)
 
-            def _save_key(name, value):
-                return save_api_key(name, value), "", settings_status(), engines_table()
-
-            def _delete_key(name):
-                return delete_api_key(name), settings_status(), engines_table()
-
-            key_save.click(_save_key, [key_name, key_value],
-                           [key_msg, key_value, keys_md, engines_df])
-            key_delete.click(_delete_key, key_name, [key_msg, keys_md, engines_df])
-            _settings = lambda: (settings_status(), engines_table())  # noqa: E731
-            refresh_settings.click(_settings, None, [keys_md, engines_df])
-            settings_tab.select(_settings, None, [keys_md, engines_df])
+        # Valores iniciales: se calculan al cargar la página (eventos privados, fuera de la API).
+        app.load(lambda: generation_license_notice(initial_script, ENGINE_AUTO, cfg), None,
+                 engine_notice, api_visibility="private")
+        app.load(lambda: voices_table(cfg), None, voices_df, api_visibility="private")
 
     app.podcast_config = cfg  # type: ignore[attr-defined]
     return app
 
 
+def _settings_tab(app: gr.Blocks, cfg: UIConfig) -> None:
+    """Pestaña Ajustes (claves de API y licencias). Solo en modo local."""
+    with gr.Tab("Ajustes") as settings_tab:
+        gr.Markdown(
+            "### Claves de API de los motores en la nube\n"
+            "Se guardan en el fichero `.env` del proyecto (ignorado por git) y solo se "
+            "muestran enmascaradas. Los motores locales no necesitan claves.")
+        keys_md = gr.Markdown()
+        with gr.Row():
+            key_name = gr.Dropdown(api_key_names(), value=None, label="Variable",
+                                   allow_custom_value=True)
+            key_value = gr.Textbox(label="Valor", type="password", max_lines=1,
+                                   placeholder="pega aquí la clave")
+        with gr.Row():
+            key_save = gr.Button("💾 Guardar clave", variant="primary")
+            key_delete = gr.Button("🗑️ Borrar clave", variant="stop")
+        key_msg = gr.Markdown()
+        gr.Markdown(
+            "### Motores y licencias\n"
+            "Los pesos de **f5** (CC-BY-NC-4.0) y **xtts** (CPML) son de uso **no comercial**. "
+            "Para uso comercial usa un proveedor con plan de pago y revisa sus términos. "
+            "Clonar la voz de otra persona requiere su consentimiento. "
+            "Ver `docs/COMMERCIAL_USE.md`.")
+        engines_df = gr.Dataframe(headers=ENGINE_HEADERS,
+                                  label="Motores", interactive=False, wrap=True,
+                                  column_widths=ENGINE_COLUMN_WIDTHS)
+        refresh_settings = gr.Button("🔄 Actualizar")
+
+        def _save_key(name, value):
+            return save_api_key(name, value), "", settings_status(), engines_table()
+
+        def _delete_key(name):
+            return delete_api_key(name), settings_status(), engines_table()
+
+        key_save.click(_save_key, [key_name, key_value],
+                       [key_msg, key_value, keys_md, engines_df], api_visibility="private")
+        key_delete.click(_delete_key, key_name, [key_msg, keys_md, engines_df],
+                         api_visibility="private")
+        _settings = lambda: (settings_status(), engines_table())  # noqa: E731
+        refresh_settings.click(_settings, None, [keys_md, engines_df], api_visibility="private")
+        settings_tab.select(_settings, None, [keys_md, engines_df], api_visibility="private")
+        app.load(_settings, None, [keys_md, engines_df], api_visibility="private")
+
+
+AUTH_ENV = "PODCAST_TTS_AUTH"
+_LOOPBACK_NAMES = {"localhost", "localhost.localdomain", "ip6-localhost"}
+
+
+class RemoteAuthError(ValueError):
+    """La UI se expone fuera del equipo sin usuario y clave (o con un formato inválido)."""
+
+
+def is_loopback_host(host: str | None) -> bool:
+    """``True`` si ``host`` solo escucha en el propio equipo (127.x, ::1, localhost)."""
+    h = (host or "").strip().strip("[]").lower()
+    if h in _LOOPBACK_NAMES:
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return False
+
+
+def parse_auth(value: str | None) -> tuple[str, str] | None:
+    """``"usuario:clave"`` -> ``(usuario, clave)``; ``None``/vacío -> ``None``."""
+    if value is None or not value.strip():
+        return None
+    user, sep, password = value.strip().partition(":")
+    if not sep or not user.strip() or not password:
+        raise RemoteAuthError(
+            "formato de autenticación inválido: usa --auth usuario:clave "
+            f"(o la variable {AUTH_ENV}=usuario:clave)"
+        )
+    return user.strip(), password
+
+
+def resolve_auth(host: str, share: bool, auth: str | tuple[str, str] | None = None
+                 ) -> tuple[bool, tuple[str, str] | None]:
+    """Devuelve ``(remoto, auth)``. Lanza :class:`RemoteAuthError` si hace falta auth y no hay.
+
+    ``auth`` puede ser ``"usuario:clave"``, una tupla o ``None`` (se lee ``$PODCAST_TTS_AUTH``).
+    """
+    if isinstance(auth, tuple):
+        creds: tuple[str, str] | None = auth
+    else:
+        creds = parse_auth(auth if auth is not None else os.environ.get(AUTH_ENV))
+    remote = bool(share) or not is_loopback_host(host)
+    if remote and creds is None:
+        why = "con --share (enlace público)" if share else f"en --host {host}"
+        raise RemoteAuthError(
+            f"la UI no puede abrirse {why} sin usuario y clave: cualquiera en la red podría "
+            "generar audio, borrar voces o leer ficheros. Añade --auth usuario:clave (o define "
+            f"la variable {AUTH_ENV}=usuario:clave), o usa --host 127.0.0.1 para uso local."
+        )
+    return remote, creds
+
+
 def launch(app: gr.Blocks, *, host: str = "127.0.0.1", port: int = 7860, share: bool = False,
            inbrowser: bool = False, cfg: UIConfig | None = None,
-           prevent_thread_lock: bool = False, quiet: bool = False) -> Any:
+           prevent_thread_lock: bool = False, quiet: bool = False,
+           auth: str | tuple[str, str] | None = None) -> Any:
     """Lanza el servidor Gradio.
 
     Con ``prevent_thread_lock=True`` vuelve en cuanto el servidor está escuchando (lo usa la
     app de escritorio, que lo para luego con ``app.close()``).
+
+    Si ``host`` no es de bucle local o ``share=True``, exige ``auth`` (o ``$PODCAST_TTS_AUTH``)
+    y la app debe haberse construido en modo remoto (``UIConfig(remote=True)``); si no, lanza
+    :class:`RemoteAuthError`.
     """
     cfg = cfg or getattr(app, "podcast_config", None) or UIConfig()
+    remote, creds = resolve_auth(host, share, auth)
+    if remote and not cfg.remote:
+        raise RemoteAuthError(
+            "la app se construyó en modo local: usa build_app(UIConfig(remote=True)) para "
+            "exponerla fuera de este equipo"
+        )
     for d in (cfg.output_dir, cfg.scripts_dir, cfg.voices_dir):
         d.mkdir(parents=True, exist_ok=True)
     return app.queue(default_concurrency_limit=1).launch(
@@ -1119,7 +1256,7 @@ def launch(app: gr.Blocks, *, host: str = "127.0.0.1", port: int = 7860, share: 
                        str(PROJECT_ROOT / "examples")],
         theme=_theme(), css=CSS, footer_links=["gradio"],
         favicon_path=str(ICON_PNG) if ICON_PNG.is_file() else None,
-        prevent_thread_lock=prevent_thread_lock, quiet=quiet,
+        prevent_thread_lock=prevent_thread_lock, quiet=quiet, auth=creds,
     )
 
 
@@ -1129,6 +1266,9 @@ def build_arg_parser(parser: argparse.ArgumentParser | None = None) -> argparse.
     p.add_argument("--port", type=int, default=7860, help="puerto (por defecto 7860)")
     p.add_argument("--host", default="127.0.0.1", help="interfaz de red (por defecto 127.0.0.1)")
     p.add_argument("--share", action="store_true", help="crea un enlace público temporal de Gradio")
+    p.add_argument("--auth", default=None, metavar="USUARIO:CLAVE",
+                   help=f"usuario y clave de acceso; obligatorio con --share o un --host que no "
+                        f"sea 127.0.0.1 (también con la variable {AUTH_ENV})")
     p.add_argument("--inbrowser", action="store_true", help="abre el navegador al arrancar")
     p.add_argument("--voices-dir", default=None, help="directorio de voces")
     return p
@@ -1140,11 +1280,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def run_from_args(args: argparse.Namespace) -> int:
-    cfg = UIConfig(voices_dir=Path(args.voices_dir)) if getattr(args, "voices_dir", None) \
-        else UIConfig()
+    import sys
+
+    try:
+        remote, creds = resolve_auth(args.host, args.share, getattr(args, "auth", None))
+    except RemoteAuthError as exc:
+        print(f"Error: {exc}", file=sys.stderr, flush=True)
+        return 2
+    kwargs: dict[str, Any] = {"remote": remote}
+    if getattr(args, "voices_dir", None):
+        kwargs["voices_dir"] = Path(args.voices_dir)
+    cfg = UIConfig(**kwargs)
+    if remote:
+        print("Modo remoto: acceso con usuario y clave; pestaña Ajustes desactivada y solo "
+              "rutas de audio relativas.", flush=True)
     print(f"Lanzando la UI en http://{args.host}:{args.port} (Ctrl+C para salir)", flush=True)
     launch(build_app(cfg), host=args.host, port=args.port, share=args.share,
-           inbrowser=getattr(args, "inbrowser", False), cfg=cfg)
+           inbrowser=getattr(args, "inbrowser", False), cfg=cfg, auth=creds)
     return 0
 
 

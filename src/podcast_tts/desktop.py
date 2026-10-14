@@ -15,8 +15,11 @@ Funcionamiento:
 - Al cerrar la ventana se para el servidor y termina el proceso.
 - Las descargas de Gradio abren el diálogo "Guardar como" de Windows; además la UI tiene el
   botón "Abrir carpeta de salida".
-- Instancia única: si ya hay una abierta, se trae su ventana al frente y no se arranca un
-  segundo servidor.
+- Instancia única por instalación (el nombre del mutex lleva un hash de la carpeta del
+  proyecto): si ya hay una abierta, se trae su ventana al frente y no se arranca un segundo
+  servidor.
+- Sin ventana nativa y sin consola (pythonw), se abre el navegador y una ventanita con
+  "Abrir navegador" y "Cerrar AudioGeneration"; al cerrarla se para el servidor.
 - Si falta pywebview (extra ``desktop``) o el runtime WebView2, avisa y abre la UI en el
   navegador.
 
@@ -26,6 +29,7 @@ Requiere el extra ``desktop`` (``uv sync --extra desktop``).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import socket
@@ -41,13 +45,31 @@ from typing import Any, Sequence
 APP_NAME = "AudioGeneration"
 WINDOW_TITLE = "AudioGeneration — Podcast TTS Studio"
 APP_USER_MODEL_ID = "enriquevelmai.AudioGeneration.Desktop"
-MUTEX_NAME = "Local\\AudioGeneration.PodcastTTS.Desktop"
+MUTEX_PREFIX = "Local\\AudioGeneration.PodcastTTS.Desktop"
+LOG_MAX_BYTES = 1_000_000  # desktop.log se rota a desktop.log.1 al pasar de ~1 MB
 
 DEFAULT_SIZE = (1320, 900)
 MIN_SIZE = (900, 620)
 SERVER_TIMEOUT = 180.0  # s: la primera vez importar gradio/pandas puede tardar
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def install_id(root: str | Path | None = None) -> str:
+    """Hash corto de la carpeta del proyecto (distingue instalaciones en el mismo usuario).
+
+    ``launcher.py`` calcula lo mismo para comprobar el mutex: si se cambia aquí, cámbialo allí.
+    """
+    path = os.path.normcase(os.path.realpath(str(root or _PROJECT_ROOT)))
+    return hashlib.sha256(path.encode("utf-8")).hexdigest()[:12]
+
+
+def mutex_name(root: str | Path | None = None) -> str:
+    """Nombre del mutex de instancia única de la instalación en ``root``."""
+    return f"{MUTEX_PREFIX}.{install_id(root)}"
+
+
+MUTEX_NAME = mutex_name()
 ICON_ICO = _PROJECT_ROOT / "assets" / "icon.ico"
 ICON_PNG = _PROJECT_ROOT / "assets" / "icon.png"
 
@@ -110,16 +132,31 @@ def save_window_state(state: dict[str, Any], path: Path | None = None) -> None:
 
 
 def _instance_file() -> Path:
-    return state_dir() / "instance.json"
+    return state_dir() / f"instance-{install_id()}.json"
+
+
+def _rotate_log(path: Path, max_bytes: int | None = None) -> None:
+    """Rotación simple: si el log pasa de ``max_bytes`` se renombra a ``<log>.1``."""
+    try:
+        if path.stat().st_size > (LOG_MAX_BYTES if max_bytes is None else max_bytes):
+            path.replace(path.with_name(path.name + ".1"))
+    except OSError:
+        pass
 
 
 def _setup_stdio() -> None:
-    """Con pythonw.exe no hay stdout/stderr: se redirigen a un log para no perder errores."""
+    """Con pythonw.exe no hay stdout/stderr: se redirigen a un log para no perder errores.
+
+    Se abre en modo *append* (con rotación) y solo después de tomar el mutex de instancia
+    única, para que una segunda instancia no borre el log de la primera.
+    """
     if sys.stdout is not None and sys.stderr is not None:
         return
+    log_path = state_dir() / "desktop.log"
+    _rotate_log(log_path)
     try:
-        log = open(state_dir() / "desktop.log", "w", encoding="utf-8", errors="replace",
-                   buffering=1)
+        log = open(log_path, "a", encoding="utf-8", errors="replace", buffering=1)
+        log.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} pid {os.getpid()} =====\n")
     except OSError:
         log = open(os.devnull, "w", encoding="utf-8")
     if sys.stdout is None:
@@ -389,16 +426,69 @@ def error_html(exc: BaseException) -> str:
 # --------------------------------------------------------------------------- #
 
 
+def control_window(url: str, *, open_browser: Any = None, tk_module: Any = None,
+                   on_ready: Any = None) -> bool:
+    """Ventanita de control cuando la UI está en el navegador y no hay consola.
+
+    Muestra "AudioGeneration se está ejecutando en el navegador" con [Abrir navegador] y
+    [Cerrar AudioGeneration]. Bloquea hasta que se cierra. Devuelve ``False`` si tkinter no
+    está disponible (entonces el llamante debe bloquear de otra forma).
+    ``tk_module`` y ``on_ready(root)`` permiten probarla sin mostrarla de verdad.
+    """
+    if tk_module is None:
+        try:
+            import tkinter as tk_module  # type: ignore[no-redef]
+        except Exception:  # noqa: BLE001 - Python sin Tcl/Tk
+            return False
+    tk = tk_module
+    open_browser = open_browser or webbrowser.open
+    try:
+        root = tk.Tk()
+    except Exception as exc:  # noqa: BLE001 - p.ej. Tcl/Tk mal instalado
+        _log(f"No se pudo abrir la ventana de control: {exc!r}")
+        return False
+    root.title(APP_NAME)
+    root.resizable(False, False)
+    try:
+        if ICON_ICO.is_file():
+            root.iconbitmap(str(ICON_ICO))
+    except Exception:  # noqa: BLE001
+        pass
+    frame = tk.Frame(root, padx=24, pady=18)
+    frame.pack()
+    tk.Label(frame, text=f"{APP_NAME} se está ejecutando en el navegador",
+             font=("Segoe UI", 11, "bold")).pack(pady=(0, 4))
+    tk.Label(frame, text=url, fg="#6b6894").pack(pady=(0, 14))
+    buttons = tk.Frame(frame)
+    buttons.pack()
+    tk.Button(buttons, text="Abrir navegador", width=18,
+              command=lambda: open_browser(url)).pack(side="left", padx=6)
+    tk.Button(buttons, text=f"Cerrar {APP_NAME}", width=22,
+              command=root.destroy).pack(side="left", padx=6)
+    root.protocol("WM_DELETE_WINDOW", root.destroy)
+    if on_ready is not None:
+        root.after(0, lambda: on_ready(root))
+    root.mainloop()
+    return True
+
+
 def run_browser(port: int = 0, voices_dir: str | None = None, reason: str | None = None) -> int:
-    """Alternativa sin ventana nativa: servidor + navegador por defecto."""
+    """Alternativa sin ventana nativa: servidor + navegador por defecto.
+
+    Con consola se sale con Ctrl+C. Sin consola (pythonw) se muestra :func:`control_window`;
+    al cerrarla se para el servidor (y, al volver, se libera el mutex de instancia única).
+    """
     if reason:
         notify(f"{reason}\n\nSe abrirá {APP_NAME} en el navegador.", error=False)
     server = Server(port=port, voices_dir=voices_dir)
     try:
         url = server.start()
-        _log(f"UI en {url} (Ctrl+C para salir)")
         webbrowser.open(url)
-        server.app.block_thread()
+        if not _has_console() and control_window(url):
+            _log("Ventana de control cerrada: parando el servidor.")
+        else:
+            _log(f"UI en {url} (Ctrl+C para salir)")
+            server.app.block_thread()
     except KeyboardInterrupt:
         pass
     finally:
@@ -409,13 +499,13 @@ def run_browser(port: int = 0, voices_dir: str | None = None, reason: str | None
 def run_desktop(port: int = 0, voices_dir: str | None = None, debug: bool = False,
                 force_browser: bool = False) -> int:
     """Abre la app de escritorio. Devuelve el código de salida."""
-    _setup_stdio()
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     set_app_user_model_id()
 
     instance = SingleInstance()
     if not instance.acquire():
         return handle_second_instance()
+    _setup_stdio()  # después del mutex: una segunda instancia no toca el log de la primera
     try:
         if force_browser:
             return run_browser(port, voices_dir)

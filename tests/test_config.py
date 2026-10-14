@@ -96,3 +96,25 @@ def test_mask_and_status(env_file) -> None:
     assert st["AZURE_SPEECH_REGION"].masked == "westeurope"  # no es secreta
     assert not st["ELEVENLABS_API_KEY"].is_set and st["ELEVENLABS_API_KEY"].masked == ""
     assert "1234567890" not in repr(st)
+
+
+def test_quoted_value_with_trailing_comment(tmp_path) -> None:
+    path = tmp_path / ".env"
+    path.write_text(
+        'A="abc" # comentario\n'
+        "B='x y'   # otro\n"
+        'C="con # dentro" # fuera\n'
+        'D="esc \\" comilla"  \n'
+        "E=sin_comillas # nota\n"
+        'F="abc"def\n'
+        'G="sin cerrar\n',
+        encoding="utf-8",
+    )
+    data = config.read_env_file(path)
+    assert data["A"] == "abc"
+    assert data["B"] == "x y"
+    assert data["C"] == "con # dentro"
+    assert data["D"] == 'esc " comilla'
+    assert data["E"] == "sin_comillas"
+    assert data["F"] == '"abc"def'  # no es un valor entrecomillado: se deja tal cual
+    assert data["G"] == '"sin cerrar'

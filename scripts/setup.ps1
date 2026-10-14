@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   Ejecuta bats\install.bat en modo no interactivo (detecta GPU NVIDIA, uv sync con
-  los extras local + cuda|cpu + dev, check_env). No descarga modelos ni instala la skill
+  los extras local + cuda|cpu + desktop, check_env). No descarga modelos ni instala la skill
   salvo que se pida.
   - -Recreate: borra .venv antes de instalar.
   - -Smoke: ademas descarga los modelos y genera output\smoke_*.wav con F5 y XTTS.
@@ -23,11 +23,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
-Set-Location $Root
+Set-Location -LiteralPath $Root
 
-if ($Recreate -and (Test-Path ".venv")) {
+if ($Recreate -and (Test-Path -LiteralPath ".venv")) {
     Write-Host "Recreando .venv ..."
-    Remove-Item -Recurse -Force ".venv"
+    Remove-Item -LiteralPath ".venv" -Recurse -Force
 }
 
 $env:PODCAST_TTS_NONINTERACTIVE = "1"
@@ -37,7 +37,8 @@ $installArgs = @("/y")
 if ($Cpu) { $installArgs += "/cpu" }
 if ($Cuda) { $installArgs += "/cuda" }
 
-& cmd /c (Join-Path $Root "bats\install.bat") @installArgs
+# Ruta relativa (ya estamos en $Root): cmd /c rompe las rutas absolutas con "&" o "(".
+& cmd.exe /d /c "bats\install.bat" @installArgs
 if ($LASTEXITCODE -ne 0) { throw "bats\install.bat fallo (codigo $LASTEXITCODE)" }
 
 if ($Smoke) {

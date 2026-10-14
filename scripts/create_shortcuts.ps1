@@ -3,20 +3,21 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\create_shortcuts.ps1 [-Root <repo>] [-Dest <carpeta>]
 # Con -Dest (pruebas) los accesos van a <Dest>\Escritorio y <Dest>\Menu Inicio en vez de
 # a las carpetas reales del usuario.
+# Se usa -LiteralPath en todo: con -Path, los [ ] de una ruta se tratan como comodines.
 param(
     [string]$Root = (Split-Path -Parent $PSScriptRoot),
     [string]$Dest = ""
 )
 $ErrorActionPreference = "Stop"
-$Root = (Resolve-Path $Root).Path
+$Root = (Resolve-Path -LiteralPath $Root).Path
 
 $exe = Join-Path $Root "AudioGeneration.exe"
 $runBat = Join-Path $Root "bats\run.bat"
 $icon = Join-Path $Root "assets\icon.ico"
 
-if (Test-Path $exe) {
+if (Test-Path -LiteralPath $exe -PathType Leaf) {
     $target = $exe; $arguments = ""; $style = 1
-} elseif (Test-Path $runBat) {
+} elseif (Test-Path -LiteralPath $runBat -PathType Leaf) {
     # Sin el exe, el acceso abre run.bat minimizado (run.bat lanza la app sin consola).
     $target = $runBat; $arguments = ""; $style = 7
 } else {
@@ -36,7 +37,7 @@ $shell = New-Object -ComObject WScript.Shell
 $made = 0
 foreach ($dir in @($desktopDir, $startDir)) {
     if (-not $dir) { continue }
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    [void][IO.Directory]::CreateDirectory($dir)
     $lnkPath = Join-Path $dir "AudioGeneration.lnk"
     $lnk = $shell.CreateShortcut($lnkPath)
     $lnk.TargetPath = $target
@@ -44,7 +45,7 @@ foreach ($dir in @($desktopDir, $startDir)) {
     $lnk.WorkingDirectory = $Root
     $lnk.WindowStyle = $style
     $lnk.Description = "AudioGeneration - Podcast TTS Studio"
-    if (Test-Path $icon) { $lnk.IconLocation = "$icon,0" }
+    if (Test-Path -LiteralPath $icon -PathType Leaf) { $lnk.IconLocation = "$icon,0" }
     $lnk.Save()
     Write-Output "  Acceso creado: $lnkPath -> $target"
     $made++

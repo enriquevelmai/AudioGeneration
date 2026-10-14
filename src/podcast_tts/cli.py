@@ -7,7 +7,7 @@ Ejemplos::
     python -m podcast_tts voices list
     python -m podcast_tts voices add ana clip.wav --text "Transcripción del clip" --lang es
     python -m podcast_tts voices remove ana
-    python -m podcast_tts ui [--port 7860] [--host 127.0.0.1] [--share]
+    python -m podcast_tts ui [--port 7860] [--host 127.0.0.1] [--share] [--auth usuario:clave]
     python -m podcast_tts desktop [--browser] [--debug]
     python -m podcast_tts engines [--json]
     python -m podcast_tts config show | set OPENAI_API_KEY | unset OPENAI_API_KEY
@@ -79,11 +79,16 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     if not args.no_license_notice:
         _print_license_notice(script, args)
     _eprint(f"Generando {output} a partir de {script}...")
+    info: dict[str, float] = {}
     path = generate(
         script, output, voices_dir=args.voices_dir, options=options, progress=progress,
-        max_chars=args.max_chars, bitrate=args.bitrate,
+        max_chars=args.max_chars, bitrate=args.bitrate, info=info,
     )
-    _eprint(f"Listo: {path} ({time.perf_counter() - started:.1f} s)")
+    elapsed = time.perf_counter() - started
+    if "duration" in info:
+        _eprint(f"Listo: {path} — duración {info['duration']:.1f} s, generado en {elapsed:.1f} s")
+    else:
+        _eprint(f"Listo: {path} — generado en {elapsed:.1f} s")
     return 0
 
 
@@ -448,6 +453,9 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument("--port", type=int, default=7860, help="puerto (por defecto 7860)")
     u.add_argument("--host", default="127.0.0.1", help="interfaz de red (por defecto 127.0.0.1)")
     u.add_argument("--share", action="store_true", help="crea un enlace público temporal de Gradio")
+    u.add_argument("--auth", default=None, metavar="USUARIO:CLAVE",
+                   help="usuario y clave de acceso; obligatorio con --share o con un --host que "
+                        "no sea 127.0.0.1/localhost (también con la variable PODCAST_TTS_AUTH)")
     u.add_argument("--inbrowser", action="store_true", help="abre el navegador al arrancar")
     u.set_defaults(func=_cmd_ui)
 

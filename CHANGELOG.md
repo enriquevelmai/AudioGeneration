@@ -7,6 +7,41 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- The UI refuses to start with `--host` other than loopback or with `--share` unless
+  `--auth user:password` (or `PODCAST_TTS_AUTH`) is set. In that remote mode the Ajustes tab is
+  hidden and music/sfx paths must be relative; internal events are private in the Gradio API.
+- `[voz:../x]` can no longer read outside `voices/`; Windows reserved names (CON, NUL...) are
+  rejected as voice names. The launcher only opens release URLs of this repository.
+
+### Fixed
+
+- Installing into a folder with accents or `ñ` (e.g. `C:\Users\José\...`) now works: the
+  editable install's `.pth` is rewritten as ASCII after `uv sync`, and the launcher and the `.bat`
+  scripts also set `PYTHONPATH`.
+- The `.bat` scripts work in folders with `&`, `!`, `( )`, `[ ]` or spaces, check that they run
+  from an extracted project, and `update.bat` returns an error (shown by the launcher) when
+  `git pull` fails. The `.ps1` scripts use `-LiteralPath`.
+- Loudness normalization now reaches the target (±0.5 LU) instead of ending ~1.5 LU lower
+  because of the peak limit.
+- Multi-line HTML comments are no longer read aloud; Markdown links and checkboxes are plain
+  text; `lang: no` stays `"no"`; `nan`, `inf` and huge pauses or fades are rejected.
+- A malformed `voice.json` no longer breaks the voice list; clearer errors without ffmpeg.
+- The synthesis cache depends on the model version and parameters of each engine.
+- The launcher no longer offers to update while the app is open, detects when the app dies at
+  startup, and each installation has its own single-instance lock and log.
+- `.env` values in quotes followed by a comment are read correctly.
+
+### Changed
+
+- The release zip contains an `AudioGeneration/` folder. `install.bat /y` also creates the
+  shortcuts (`/noshortcuts` to skip them) and installs the `dev` extra only with `/dev`.
+- The example `guiones/ejemplo_dialogo.md` moved to `examples/`; `guiones/` (where the app saves
+  your scripts) is ignored by git.
+- In the browser mode without a console, a small window lets you reopen the browser or close
+  AudioGeneration.
+
 ## [1.0.0] - 2026-10-14
 
 First public release.

@@ -171,7 +171,7 @@ def test_parser_produces_multiple_speech_chunks() -> None:
     "text, line, fragment",
     [
         ("[voz:ana] hola\n[foo:bar]", 2, "etiqueta desconocida"),
-        ("[voz:ana] hola\n\n[esto no es etiqueta]", 3, "no reconocida"),
+        ("[voz:ana] hola\n\n[vos:carlos] x", 3, "etiqueta desconocida"),
         ("[pausa:abc]", 1, "número"),
         ("[pausa:-1]", 1, ">="),
         ("[musica:a.mp3 vol=2]", 1, "<="),
@@ -207,3 +207,106 @@ def test_crlf_and_bom() -> None:
     script = parse_script("﻿---\r\ntitle: X\r\n---\r\n[voz:ana] Hola.\r\n")
     assert script.meta.title == "X"
     assert speeches(script)[0].text == "Hola."
+
+
+# --------------------------------------------------------------------------- #
+# Regresiones de la revisión de código
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "[pausa:nan]",
+        "[pausa:inf]",
+        "[pausa:1e308]",
+        "[pausa:601]",
+        "[musica:a.mp3 fondo fade=inf]",
+        "[musica:a.mp3 fade=1e9]",
+        "[musica:stop fade=nan]",
+        "[sfx:a.wav vol=nan]",
+        "[voz:ana speed=nan] hola",
+    ],
+)
+def test_non_finite_or_huge_numbers_rejected(text: str) -> None:
+    with pytest.raises(ScriptParseError) as exc:
+        parse_script(text)
+    assert exc.value.line == 1
+
+
+def test_paragraph_pause_front_matter_bounded() -> None:
+    with pytest.raises(ScriptParseError):
+        parse_script("---\nparagraph_pause: .inf\n---\n[voz:ana] hola")
+    with pytest.raises(ScriptParseError):
+        parse_script("---\nparagraph_pause: 1000\n---\n[voz:ana] hola")
+
+
+def test_multiline_html_comment_not_synthesized() -> None:
+    text = (
+        "[voz:ana] Hola.\n"
+        "<!-- nota interna\n"
+        "que ocupa varias líneas\n"
+        "-->\n"
+        "Adiós. <!-- en línea --> Fin.\n"
+        "Texto <!-- empieza\n"
+        "sigue --> resto.\n"
+        "[pausa:x]"
+    )
+    with pytest.raises(ScriptParseError) as exc:
+        parse_script(text)
+    assert exc.value.line == 8  # la numeración de líneas se conserva
+    script = parse_script(text.rsplit("\n", 1)[0])
+    joined = " ".join(s.text for s in speeches(script))
+    assert "nota" not in joined and "varias" not in joined and "en línea" not in joined
+    assert "empieza" not in joined and "sigue" not in joined
+    assert "Adiós." in joined and "Fin." in joined and "resto." in joined
+    # Un comentario entre dos líneas no corta el párrafo (no añade pausa)
+    assert not any(isinstance(s, Pause) for s in script.segments)
+
+
+def test_unclosed_html_comment_is_error() -> None:
+    with pytest.raises(ScriptParseError) as exc:
+        parse_script("[voz:ana] Hola.\n\n<!-- sin cerrar\nmás texto")
+    assert exc.value.line == 3
+
+
+@pytest.mark.parametrize("value, expected", [("no", "no"), ("NO", "NO"), ("on", "on"),
+                                             ("1.0", "1.0"), ('"no"', "no")])
+def test_front_matter_text_fields_stay_text(value: str, expected: str) -> None:
+    script = parse_script(f"---\nlang: {value}\ntitle: {value}\nvoz: ana\n---\nHola.")
+    assert script.meta.lang == expected
+    assert script.meta.title == expected
+
+
+def test_front_matter_text_fields_without_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if name == "yaml":
+            raise ImportError
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    script = parse_script("---\nlang: no\nvoz: ana\n---\nHola.")
+    assert script.meta.lang == "no"
+
+
+def test_markdown_links_and_checkboxes_are_text() -> None:
+    script = parse_script(
+        "[voz:ana] Mira [la web](https://example.com/a_b) hoy.\n"
+        "- [ ] tarea pendiente\n"
+        "- [x] tarea hecha [risas] y [10:30]\n"
+    )
+    joined = " ".join(s.text for s in speeches(script))
+    assert "la web hoy." in joined and "https" not in joined
+    assert "[ ] tarea pendiente" in joined
+    assert "[x] tarea hecha [risas] y [10:30]" in joined
+
+
+def test_unknown_tag_with_colon_still_errors() -> None:
+    with pytest.raises(ScriptParseError) as exc:
+        parse_script("[voz:ana] hola\n[desconocida:x]")
+    assert exc.value.line == 2
+    assert "desconocida" in str(exc.value)

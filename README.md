@@ -91,9 +91,10 @@ voices, music and sound effects, cloning voices from a 10-second clip, entirely 
 
 1. Download **`AudioGeneration-v1.0.0-windows.zip`** from the
    [**latest release**](https://github.com/enriquevelmai/AudioGeneration/releases/latest).
-2. Unzip it into a folder of your choice, for example `Documents\AudioGeneration`. Avoid folders
-   that need administrator rights, such as `Program Files`.
-3. Double-click **`AudioGeneration.exe`**.
+2. Extract it (right-click → **Extract All**) into a folder of your choice, for example
+   `Documents`. The zip contains an `AudioGeneration` folder with everything inside. Avoid folders
+   that need administrator rights, such as `Program Files`, and very long paths.
+3. Open the `AudioGeneration` folder and double-click **`AudioGeneration.exe`**.
 4. **The first time** it installs everything it needs by itself: Python, the dependencies and, if
    you have an NVIDIA GPU, PyTorch with CUDA. It takes about **10-15 minutes** and **about 6-7 GB** with a
    GPU, depending on your connection. It can also install `ffmpeg`, download the voice models and
@@ -125,8 +126,9 @@ bats\install.bat
 4. checks `ffmpeg` and offers to install it with `winget` if it is missing;
 5. offers to download the models now, create shortcuts, and install the Claude Code skill.
 
-Options: `/y` answers yes to everything (unattended), `/cpu` or `/cuda` force the PyTorch build.
-You can also build `AudioGeneration.exe` yourself with `bats\build_launcher.bat`.
+Options: `/y` answers yes to everything, shortcuts included (unattended), `/noshortcuts` skips the
+shortcuts, `/cpu` or `/cuda` force the PyTorch build and `/dev` adds the development tools
+(pytest). You can also build `AudioGeneration.exe` yourself with `bats\build_launcher.bat`.
 
 ### Requirements
 
@@ -200,8 +202,16 @@ podcast-tts models download all
 
 # Interfaces
 podcast-tts desktop                          # desktop window
-podcast-tts ui --port 7861 --inbrowser       # browser; --host 0.0.0.0 for your LAN, --share for a public Gradio link
+podcast-tts ui --port 7861 --inbrowser       # browser, only on this PC (127.0.0.1)
+podcast-tts ui --host 0.0.0.0 --auth ana:a-long-password   # your LAN, with user and password
 ```
+
+> [!WARNING]
+> The UI has no accounts: whoever can open it can generate audio, delete voices and use your
+> API keys. With `--host` other than `127.0.0.1`/`localhost`, or with `--share` (a public
+> Gradio link), it refuses to start unless you set `--auth user:password` (or the
+> `PODCAST_TTS_AUTH` variable), and it runs in *remote mode*: no **Ajustes** tab (API keys) and
+> music/sfx only from relative paths. Only expose it on networks you trust.
 
 Useful `generate` options: `--engine` (force one engine for the whole script), `--voices-dir`,
 `--max-chars 250`, `--bitrate 192k`, `--sample-rate 44100`, `--lufs -16`, `--no-normalize`,
@@ -234,7 +244,9 @@ paragraph_pause: 0.4  # pause between paragraphs, in seconds
 | `[sfx:file.wav]` | | Sound effect overlaid at that point (time does not advance) | `vol=0-1` (1.0) |
 | `[titulo:...]` | `[title:...]`, `[título:...]` | Metadata, not spoken | |
 
-- Lines starting with `#` or `<!--` are comments and are never spoken.
+- Lines starting with `#` and `<!-- ... -->` blocks (also multi-line) are comments and are never
+  spoken. Brackets that are not a `[type:...]` tag, such as `- [ ]` checkboxes, are plain text,
+  and Markdown links `[text](url)` are read as "text".
 - A blank line separates paragraphs and adds a short pause.
 - Music and effect paths are relative to the script; quote paths with spaces:
   `[musica:"my audio/intro.mp3"]`.
@@ -257,7 +269,8 @@ lang: en
 
 Ready-to-run examples: [examples/ejemplo.md](examples/ejemplo.md) (Spanish, with English lines),
 [examples/english_episode.md](examples/english_episode.md) (English) and
-[guiones/ejemplo_dialogo.md](guiones/ejemplo_dialogo.md) (bilingual dialogue). The full reference,
+[examples/ejemplo_dialogo.md](examples/ejemplo_dialogo.md) (bilingual dialogue). The scripts you
+save from the app go to `guiones/`, which git ignores. The full reference,
 with more examples, is in [skill/podcast-tts/references/formato-guion.md](skill/podcast-tts/references/formato-guion.md)
 (Spanish).
 
@@ -362,8 +375,9 @@ AudioGeneration works fully without it.
 
 ## Updating
 
-- **Release (zip)**: just open `AudioGeneration.exe`. It checks the latest GitHub release and
-  offers to update.
+- **Release (zip)**: just open `AudioGeneration.exe`. It checks the latest GitHub release and,
+  if there is a newer one, offers to open its download page; extract the new zip and run
+  `bats\install.bat` again.
 - **Git clone**: `AudioGeneration.exe` checks with Git, or run `bats\update.bat`, which pulls the
   code, syncs the dependencies with the same options you installed and updates the downloaded
   models.
@@ -372,6 +386,17 @@ AudioGeneration works fully without it.
 ---
 
 ## Troubleshooting
+
+<details>
+<summary><b>Nothing happens, or "No module named podcast_tts"</b></summary>
+
+Install AudioGeneration in a **short path** without unusual characters, for example
+`C:\AudioGeneration` or `Documents\AudioGeneration`: very long paths break some dependencies
+(numba reports "filename too long"). Folders with accents or `ñ` are supported since this version;
+if you installed an older one there, run `bats\install.bat` again. If the app closes right after
+opening, `AudioGeneration.exe` shows the end of the log; `launcher.log` (next to the exe) and
+`%LOCALAPPDATA%\AudioGeneration\desktop.log` have the details.
+</details>
 
 <details>
 <summary><b>Synthesis is very slow / CUDA is not used</b></summary>
@@ -463,7 +488,8 @@ AudioGeneration/
 │   ├── ui.py                  # Gradio interface
 │   └── engines/               # f5, xtts, elevenlabs, azure, openai, dummy + plugin registry
 ├── voices/                    # sample voices: ana, carlos, emma, david
-├── examples/, guiones/        # example scripts (guiones/ is also where the app saves yours)
+├── examples/                  # example scripts
+├── guiones/                   # your scripts saved from the app (ignored by git)
 ├── skill/podcast-tts/         # optional Claude Code skill
 ├── scripts/                   # check_env.py, install_skill.ps1, make_sample_voices.py, smoke tests
 ├── docs/                      # documentation (index: docs/README.md)

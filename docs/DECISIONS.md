@@ -77,3 +77,20 @@ y pins, ver [ENGINES.md](ENGINES.md); para licencias, [MODELS_AND_LICENSES.md](.
   `bats\run_web.bat` abre siempre el navegador. `bats\create_shortcuts.bat` crea los accesos del
   Escritorio y del menú Inicio (lo ofrece `bats\install.bat`).
 - **Licencia**: el código es MIT; los pesos de los modelos conservan sus propias licencias.
+
+## Robustez y seguridad (revisión posterior a 1.0.0)
+
+- **Rutas con acentos**: Python 3.11 lee los `.pth` con la codificación ANSI de Windows aunque
+  `PYTHONUTF8=1`, así que la instalación editable de uv fallaba en `C:\Users\José\...`. Se
+  descartó `uv sync --no-editable` porque el código localiza el proyecto con
+  `Path(__file__).parents[2]` (voces, ejemplos, `.env`) y obligaría a reinstalar el paquete en
+  cada actualización. En su lugar, `scripts/fix_editable_pth.py` reescribe el `.pth` como una
+  línea `import` solo ASCII que calcula `<proyecto>\src` desde `sys.prefix`; los `.bat` y el
+  lanzador definen además `PYTHONPATH`.
+- **UI remota**: fuera de `127.0.0.1` o con `--share` la UI exige `--auth` y funciona en modo
+  remoto (sin pestaña Ajustes y sin rutas de audio absolutas). Los eventos internos son privados
+  en la API de Gradio (`api_visibility="private"`).
+- **Caché de síntesis**: la clave incluye el `cache_tag` de cada motor (modelo, versión del
+  paquete y parámetros), de modo que cambiar de modelo regenera las frases.
+- **Instancia única**: el mutex lleva un hash de la carpeta del proyecto (varias instalaciones
+  pueden convivir) y el lanzador lo consulta para no actualizar con la app abierta.

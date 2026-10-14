@@ -13,7 +13,7 @@ list of models and services, with their licenses and where they are cached, is i
 | Engine | Type | License of the audio source | Commercial use |
 |---|---|---|---|
 | `f5` | local (GPU) | F5-TTS weights (`F5TTS_v1_Base`) and `jpgallegoar/F5-Spanish`: **CC-BY-NC-4.0** | **No** |
-| `xtts` | local (GPU) | XTTS v2 weights: **Coqui Public Model License (CPML)** | **No** |
+| `xtts` | local (GPU) | XTTS v2 weights: **[Coqui Public Model License (CPML)](https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt)**; when you share the audio, include a link to the CPML | **No** |
 | `dummy` | local | No model (test tones) | Yes (but it is not speech) |
 | `elevenlabs` | cloud (paid API) | [ElevenLabs Terms](https://elevenlabs.io/terms-of-use) | Depends on the plan: paid plans yes; the free plan is non-commercial and requires attribution |
 | `azure` | cloud (paid API) | [Microsoft Product Terms](https://www.microsoft.com/licensing/terms/productoffering/MicrosoftAzure) for Azure AI Speech | Yes, with your own Azure subscription, subject to Microsoft's terms and the Azure AI Speech code of conduct |

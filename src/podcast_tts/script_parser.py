@@ -22,6 +22,7 @@ y una lista de segmentos (:class:`Speech`, :class:`Pause`, :class:`Music`,
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -54,6 +55,7 @@ DEFAULT_MUSIC_VOLUME = 1.0
 DEFAULT_BG_VOLUME = 0.15
 DEFAULT_BG_FADE = 1.5
 DEFAULT_SFX_VOLUME = 1.0
+MAX_SECONDS = 600.0  # tope de pausas y fundidos (10 min)
 
 
 def known_engines() -> tuple[str, ...]:
@@ -324,6 +326,15 @@ def _coerce_scalar(value: str) -> Any:
         return v
 
 
+# Claves del front matter que son texto: no se convierten a bool/número
+# (``lang: no`` es noruego, no ``False``).
+_TEXT_META = {"title", "lang", "default_voice", "default_engine"}
+
+
+def _is_text_key(key: str) -> bool:
+    return _META_ALIASES.get(str(key).lower()) in _TEXT_META
+
+
 def _parse_front_matter_simple(block: str, start_line: int) -> dict[str, Any]:
     data: dict[str, Any] = {}
     for offset, raw in enumerate(block.splitlines()):
@@ -336,7 +347,12 @@ def _parse_front_matter_simple(block: str, start_line: int) -> dict[str, Any]:
                 start_line + offset,
             )
         key, value = line.split(":", 1)
-        data[key.strip()] = _coerce_scalar(value)
+        key = key.strip()
+        if _is_text_key(key):
+            raw_value = _unquote(value.strip())
+            data[key] = raw_value if raw_value else None
+        else:
+            data[key] = _coerce_scalar(value)
     return data
 
 
@@ -352,7 +368,18 @@ def _parse_front_matter(block: str, start_line: int) -> dict[str, Any]:
         raise ScriptParseError(f"front matter YAML inválido: {exc}", start_line) from exc
     if not isinstance(data, dict):
         raise ScriptParseError("el front matter debe ser un mapa clave: valor", start_line)
-    return {str(k): v for k, v in data.items()}
+    result = {str(k): v for k, v in data.items()}
+    if any(_is_text_key(k) and isinstance(v, (bool, int, float)) for k, v in result.items()):
+        # Relee como texto literal (BaseLoader no convierte tipos): 'no' -> "no", '1.0' -> "1.0".
+        try:
+            raw = yaml.load(block, Loader=yaml.BaseLoader) or {}
+        except yaml.YAMLError:  # pragma: no cover - ya se ha parseado con safe_load
+            raw = {}
+        for key, value in result.items():
+            if _is_text_key(key) and isinstance(value, (bool, int, float)):
+                literal = raw.get(key) if isinstance(raw, dict) else None
+                result[key] = literal if isinstance(literal, str) else str(value)
+    return result
 
 
 _META_ALIASES = {
@@ -381,9 +408,14 @@ def _build_meta(data: dict[str, Any], line: int) -> ScriptMeta:
             meta.extra[key] = value
         elif target == "paragraph_pause":
             try:
-                meta.paragraph_pause = float(value)
+                pause = float(value)
             except (TypeError, ValueError) as exc:
                 raise ScriptParseError(f"'{key}' debe ser un número", line) from exc
+            if not math.isfinite(pause) or not 0 <= pause <= MAX_SECONDS:
+                raise ScriptParseError(
+                    f"'{key}' debe estar entre 0 y {MAX_SECONDS:g} segundos", line
+                )
+            meta.paragraph_pause = pause
         else:
             setattr(meta, target, None if value is None else str(value))
     if meta.default_engine:
@@ -403,6 +435,10 @@ def _build_meta(data: dict[str, Any], line: int) -> ScriptMeta:
 # --------------------------------------------------------------------------- #
 
 _TAG_RE = re.compile(r"\[([^\[\]\n]*)\]")
+# Enlace Markdown: ``[texto](url)`` -> se lee solo "texto".
+_LINK_TAIL_RE = re.compile(r"\(([^()\s]*)\)")
+_COMMENT_OPEN = "<!--"
+_COMMENT_CLOSE = "-->"
 _TAG_HEAD_RE = re.compile(r"^\s*([^\W\d_]\w*)\s*:\s*(.*?)\s*$", re.DOTALL)
 _TOKEN_RE = re.compile(r'"[^"]*"|\'[^\']*\'|\S+')
 
@@ -456,6 +492,8 @@ def _float_attr(value: str, name: str, line: int, *, lo: float | None = None,
         num = float(value.replace(",", "."))
     except ValueError as exc:
         raise ScriptParseError(f"'{name}' debe ser un número (recibido {value!r})", line) from exc
+    if not math.isfinite(num):
+        raise ScriptParseError(f"'{name}' debe ser un número finito (recibido {value!r})", line)
     if lo is not None and num < lo:
         raise ScriptParseError(f"'{name}' debe ser >= {lo} (recibido {num})", line)
     if hi is not None and num > hi:
@@ -560,6 +598,27 @@ class _Parser:
         self.segments.append(seg)
 
     # -- tags ------------------------------------------------------------
+    @staticmethod
+    def is_tag(content: str) -> bool:
+        """``True`` si ``[content]`` debe tratarse como etiqueta (conocida o errata).
+
+        Los corchetes sin ``tipo:`` (casillas ``[ ]``/``[x]``, ``[risas]``, la
+        parte de texto de un enlace Markdown...) son texto normal. Un
+        ``[palabra:...]`` con palabra desconocida sigue siendo error, para
+        detectar erratas como ``[vos:ana]``; salvo URLs (``[https://...]``).
+        """
+        head = _TAG_HEAD_RE.match(content)
+        if not head:
+            return False
+        if head.group(2).startswith("//"):
+            return False
+        return True
+
+    @staticmethod
+    def is_known_tag(content: str) -> bool:
+        head = _TAG_HEAD_RE.match(content)
+        return bool(head) and head.group(1).lower() in _TAG_KINDS
+
     def handle_tag(self, content: str, line: int) -> None:
         head = _TAG_HEAD_RE.match(content)
         if not head:
@@ -604,7 +663,7 @@ class _Parser:
     def _tag_pause(self, tokens: list[str], tag: str, line: int) -> None:
         if len(tokens) != 1:
             raise ScriptParseError(f"[{tag}:...] solo admite un número de segundos", line)
-        seconds = _float_attr(tokens[0].rstrip("sS"), "pausa", line, lo=0.0)
+        seconds = _float_attr(tokens[0].rstrip("sS"), "pausa", line, lo=0.0, hi=MAX_SECONDS)
         self.emit(Pause(seconds=seconds, line=line))
 
     def _tag_music(self, tokens: list[str], tag: str, line: int) -> None:
@@ -612,7 +671,8 @@ class _Parser:
         attrs, flags = _split_attrs(tokens[1:], line, tag)
         if path.lower() in ("stop", "fin", "parar"):
             _check_unknown(attrs, flags, {"fade"}, set(), tag, line)
-            fade = _float_attr(attrs.get("fade", str(DEFAULT_BG_FADE)), "fade", line, lo=0.0)
+            fade = _float_attr(attrs.get("fade", str(DEFAULT_BG_FADE)), "fade", line, lo=0.0,
+                               hi=MAX_SECONDS)
             self.emit(Music(path="", fade=fade, stop=True, line=line))
             return
         _check_unknown(attrs, flags, {"vol", "volume", "fade", "bg", "fondo", "background"},
@@ -626,7 +686,8 @@ class _Parser:
         volume = (default_vol if vol_raw is None
                   else _float_attr(vol_raw, "vol", line, lo=0.0, hi=1.0))
         default_fade = DEFAULT_BG_FADE if background else 0.0
-        fade = _float_attr(attrs.get("fade", str(default_fade)), "fade", line, lo=0.0)
+        fade = _float_attr(attrs.get("fade", str(default_fade)), "fade", line, lo=0.0,
+                           hi=MAX_SECONDS)
         self.emit(Music(path=path, volume=volume, fade=fade, background=background, line=line))
 
     def _tag_sfx(self, tokens: list[str], tag: str, line: int) -> None:
@@ -652,26 +713,87 @@ class _Parser:
             self.meta = _build_meta(data, 1)
             start = end + 1
 
+        comment_only = _strip_comments(lines, start)
         for idx in range(start, len(lines)):
             lineno = idx + 1
             raw = lines[idx]
             stripped = raw.strip()
+            if idx in comment_only:
+                continue  # línea ocupada solo por un comentario: no corta el párrafo
             if not stripped:
                 if self.buffer:
                     self.flush()
                 self.pending_paragraph = True
                 continue
-            if stripped.startswith("#") or stripped.startswith("<!--"):
+            if stripped.startswith("#"):
                 continue
             pos = 0
             for m in _TAG_RE.finditer(raw):
+                if m.start() < pos:  # dentro de la URL de un enlace ya consumido
+                    continue
+                content = m.group(1)
+                link = _LINK_TAIL_RE.match(raw, m.end())
+                if not self.is_known_tag(content) and link:
+                    # Enlace Markdown: se lee el texto, no la URL.
+                    self.add_text(raw[pos:m.start()] + content, lineno)
+                    pos = link.end()
+                    continue
+                if not self.is_tag(content):
+                    continue  # corchetes normales: se quedan como texto
                 self.add_text(raw[pos:m.start()], lineno)
-                self.handle_tag(m.group(1), lineno)
+                self.handle_tag(content, lineno)
                 pos = m.end()
             self.add_text(raw[pos:], lineno)
             self.end_line()
         self.flush()
         return ParsedScript(meta=self.meta, segments=self.segments)
+
+
+def _strip_comments(lines: list[str], start: int) -> set[int]:
+    """Quita en sitio los comentarios HTML ``<!-- ... -->`` de ``lines[start:]``.
+
+    Mantiene el número de líneas (para los mensajes de error) y devuelve los
+    índices de las líneas que solo contenían comentario (que se ignoran).
+
+    :raises ScriptParseError: si un ``<!--`` no se cierra.
+    """
+    comment_only: set[int] = set()
+    in_comment = False
+    open_line = 0
+    for idx in range(start, len(lines)):
+        raw = lines[idx]
+        if not in_comment and _COMMENT_OPEN not in raw:
+            continue
+        out: list[str] = []
+        pos = 0
+        touched = False
+        while pos <= len(raw):
+            if in_comment:
+                end = raw.find(_COMMENT_CLOSE, pos)
+                touched = True
+                if end == -1:
+                    pos = len(raw) + 1
+                    break
+                in_comment = False
+                pos = end + len(_COMMENT_CLOSE)
+                out.append(" ")
+            else:
+                begin = raw.find(_COMMENT_OPEN, pos)
+                if begin == -1:
+                    out.append(raw[pos:])
+                    break
+                out.append(raw[pos:begin])
+                in_comment = True
+                open_line = idx + 1
+                touched = True
+                pos = begin + len(_COMMENT_OPEN)
+        cleaned = "".join(out)
+        if touched and not cleaned.strip():
+            comment_only.add(idx)
+        lines[idx] = cleaned
+    if in_comment:
+        raise ScriptParseError("comentario HTML sin cerrar (falta '-->')", open_line)
+    return comment_only
 
 
 def parse_script(text: str, *, max_chars: int = DEFAULT_MAX_CHARS,

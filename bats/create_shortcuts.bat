@@ -11,8 +11,22 @@ REM         bats\create_shortcuts.bat C:\ruta\pruebas  (crea "Escritorio" y "Men
 REM                                                     dentro de esa carpeta; para pruebas)
 REM         bats\create_shortcuts.bat /y [carpeta]     (sin pause)
 REM ====================================================================
-setlocal EnableExtensions
-cd /d "%~dp0.."
+setlocal EnableExtensions DisableDelayedExpansion
+pushd "%~dp0.." 2>nul || (
+    echo ERROR: no se puede abrir la carpeta del proyecto: "%~dp0.."
+    echo   Si esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    if /i not "%~1"=="/y" pause
+    exit /b 1
+)
+if not exist "pyproject.toml" (
+    echo ERROR: no se encuentra pyproject.toml en "%CD%".
+    echo   - Si has abierto el zip sin extraerlo, extrae antes todo su contenido
+    echo     ^(clic derecho sobre el zip ^> Extraer todo^) y ejecuta el .bat desde ahi.
+    echo   - Si la carpeta esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    popd
+    if /i not "%~1"=="/y" pause
+    exit /b 1
+)
 set "NONINTERACTIVE=0"
 if "%PODCAST_TTS_NONINTERACTIVE%"=="1" set "NONINTERACTIVE=1"
 set "DEST="
@@ -38,6 +52,7 @@ if defined DEST (
 if errorlevel 1 (
     echo ERROR: no se pudieron crear los accesos directos ^(ver arriba^).
     if not "%NONINTERACTIVE%"=="1" pause
+    popd
     endlocal
     exit /b 1
 )
@@ -46,5 +61,6 @@ if not exist "AudioGeneration.exe" (
     echo         ejecutar este script para que apunten a AudioGeneration.exe.
 )
 if not "%NONINTERACTIVE%"=="1" pause
+popd
 endlocal
 exit /b 0

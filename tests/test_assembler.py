@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -228,6 +229,40 @@ def test_normalize_loudness_targets_level() -> None:
     assert np.max(np.abs(y)) > 0.1
 
 
+def test_noisy_third_party_warnings_are_filtered() -> None:
+    import warnings
+
+    from podcast_tts._warnings import silence_noisy_warnings
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        silence_noisy_warnings()
+        warnings.warn("In 2.9, this function's implementation will be changed to use x")
+        warnings.warn("'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'X' instead.",
+                      DeprecationWarning)
+        warnings.warn("este aviso sí se ve")
+    assert [str(w.message) for w in caught] == ["este aviso sí se ve"]
+
+
+def test_normalize_loudness_hits_target_with_peaky_audio() -> None:
+    """Regresión: el limitador de pico dejaba los episodios ~1.5 LU por debajo de -16 LUFS."""
+    pyloudnorm = pytest.importorskip("pyloudnorm")
+    sr = 44100
+    rng = np.random.default_rng(0)
+    t = np.arange(sr * 8) / sr
+    # "Voz" con sílabas y picos esporádicos (factor de cresta alto, como la voz real)
+    x = 0.05 * np.sin(2 * np.pi * 180 * t) * (0.5 + 0.5 * np.sin(2 * np.pi * 3 * t) ** 2)
+    x += 0.01 * rng.standard_normal(t.size)
+    spikes = rng.choice(t.size, 40, replace=False)
+    x[spikes] = 0.9 * np.sign(rng.standard_normal(40))
+    x = x.astype(np.float32)
+    for target in (-16.0, -14.0, -20.0):
+        y = normalize_loudness(x, sr, target, -1.0)
+        assert np.max(np.abs(y)) <= 10 ** (-1 / 20) + 1e-6
+        measured = pyloudnorm.Meter(sr).integrated_loudness(y.astype(np.float64))
+        assert measured == pytest.approx(target, abs=0.5)
+
+
 def test_segments_list_input(tmp_path) -> None:
     audio, sr = render([Speech(voice="a", text="Hola."), Pause(seconds=1.0)],
                        voices_dir=tmp_path, options=opts(tmp_path, target_lufs=None))
@@ -253,6 +288,8 @@ def test_cli_generate_parse_and_voices(tmp_path, tone_factory) -> None:
             "--voices-dir", str(tmp_path / "v"), "--cache-dir", str(tmp_path / "c"))
     assert r.returncode == 0, r.stderr
     assert out.is_file() and "Listo" in r.stderr
+    # Regresión: se distinguen la duración del audio y el tiempo de generación
+    assert re.search(r"duración \d+\.\d s, generado en \d+\.\d s", r.stderr), r.stderr
 
     wav = tone_factory("clip.wav", 5.0)
     vd = str(tmp_path / "v")
@@ -267,3 +304,108 @@ def test_cli_generate_parse_and_voices(tmp_path, tone_factory) -> None:
     bad.write_text("[voz:ana] hola\n[raro:1]", encoding="utf-8")
     r = run("parse", str(bad))
     assert r.returncode == 1 and "Línea 2" in r.stderr
+
+
+# --------------------------------------------------------------------------- #
+# Regresiones de la revisión de código
+# --------------------------------------------------------------------------- #
+
+
+def test_render_overflow_is_assemble_error(tmp_path) -> None:
+    # Una pausa no finita (saltándose el parser) no debe acabar en OverflowError.
+    with pytest.raises(AssembleError, match="demasiado largo"):
+        render([Pause(seconds=float("inf"))], voices_dir=tmp_path, options=opts(tmp_path))
+    with pytest.raises(AssembleError, match="demasiado largo"):
+        render([Pause(seconds=1e15)], voices_dir=tmp_path, options=opts(tmp_path))
+
+
+def test_no_ffmpeg_gives_clear_error(tmp_path, tone_factory, monkeypatch) -> None:
+    import podcast_tts.assembler as asm
+
+    monkeypatch.setattr(asm.shutil, "which", lambda *_a, **_k: None)
+    audio = assemble([Speech(voice="a", text="Hola.")], voices_dir=tmp_path,
+                     options=opts(tmp_path))
+    with pytest.raises(AssembleError, match="winget install Gyan.FFmpeg"):
+        export_audio(audio, tmp_path / "out.mp3")
+    # WAV no necesita ffmpeg
+    assert export_audio(audio, tmp_path / "out.wav").is_file()
+    # Cargar audio que no es WAV tampoco
+    (tmp_path / "musica.mp3").write_bytes(b"no importa")
+    with pytest.raises(AssembleError, match="ffmpeg"):
+        render(parse_script("[musica:musica.mp3]"), voices_dir=tmp_path, options=opts(tmp_path))
+    tone_factory("bed.wav", 0.5, channels=1)
+    audio, _sr = render(parse_script("[musica:bed.wav]"), voices_dir=tmp_path,
+                        options=opts(tmp_path))
+    assert audio.size > 0
+
+
+@pytest.mark.parametrize("raw", ["../fuera.wav", "sub/../../fuera.wav", "ABS", "C:fuera.wav",
+                                 "\\fuera.wav"])
+def test_external_paths_rejected_in_remote_mode(tmp_path, tone_factory, raw) -> None:
+    base = tmp_path / "guion"
+    base.mkdir()
+    outside = tone_factory("fuera.wav", 0.5, channels=1)
+    if raw == "ABS":
+        raw = str(outside)
+    script = parse_script(f'[sfx:"{raw}"]')
+    with pytest.raises(AssembleError, match="no permitida"):
+        render(script, voices_dir=tmp_path,
+               options=opts(tmp_path, base_dir=base, allow_external_paths=False))
+
+
+def test_relative_paths_allowed_in_remote_mode(tmp_path, tone_factory) -> None:
+    base = tmp_path / "guion"
+    tone_factory("guion/sfx/ok.wav", 0.5, channels=1)
+    script = parse_script("[sfx:sfx/ok.wav]\n[pausa:1]")
+    audio, sr = render(script, voices_dir=tmp_path,
+                       options=opts(tmp_path, base_dir=base, allow_external_paths=False))
+    assert audio.size / sr == pytest.approx(1.0, abs=0.01)
+    # Un fichero relativo que no existe en base_dir ni en el proyecto no se busca en el cwd
+    with pytest.raises(AssembleError, match="no existe"):
+        render(parse_script("[sfx:nada.wav]"), voices_dir=tmp_path,
+               options=opts(tmp_path, base_dir=base, allow_external_paths=False))
+    # En modo local las rutas absolutas siguen funcionando
+    render(parse_script(f'[sfx:"{tmp_path / "guion" / "sfx" / "ok.wav"}"]'),
+           voices_dir=tmp_path, options=opts(tmp_path, base_dir=base))
+
+
+class TaggedDummy(DummyEngine):
+    def __init__(self, tag: str) -> None:
+        super().__init__()
+        self.tag = tag
+
+    @property
+    def cache_tag(self) -> str:
+        return self.tag
+
+
+def test_cache_key_depends_on_engine_cache_tag(tmp_path) -> None:
+    script = parse_script("[voz:ana] Hola.")
+    options = opts(tmp_path)
+    engine = TaggedDummy("modelo-v1")
+    render(script, voices_dir=tmp_path, options=options, engine_resolver=lambda _n: engine)
+    render(script, voices_dir=tmp_path, options=options, engine_resolver=lambda _n: engine)
+    assert engine.calls == 1
+    engine.tag = "modelo-v2"
+    render(script, voices_dir=tmp_path, options=options, engine_resolver=lambda _n: engine)
+    assert engine.calls == 2
+
+
+def test_builtin_engines_declare_cache_tag() -> None:
+    from podcast_tts.engines.azure import AzureEngine
+    from podcast_tts.engines.base import engine_cache_tag
+    from podcast_tts.engines.elevenlabs import ElevenLabsEngine
+    from podcast_tts.engines.f5 import F5Engine
+    from podcast_tts.engines.openai import OpenAIEngine
+    from podcast_tts.engines.xtts import XTTSEngine
+
+    f5_a, f5_b = engine_cache_tag(F5Engine()), engine_cache_tag(F5Engine(nfe_step=16))
+    assert "F5-Spanish" in f5_a and "nfe=32" in f5_a and f5_a != f5_b
+    xtts = engine_cache_tag(XTTSEngine())
+    assert "xtts_v2" in xtts and "coqui-tts=" in xtts
+    assert engine_cache_tag(XTTSEngine(temperature=0.5)) != xtts
+    assert "eleven_" in engine_cache_tag(ElevenLabsEngine(api_key="x"))
+    assert engine_cache_tag(OpenAIEngine(api_key="x", model="m1")) != engine_cache_tag(
+        OpenAIEngine(api_key="x", model="m2"))
+    assert engine_cache_tag(AzureEngine(api_key="x")).startswith("azure")
+    assert engine_cache_tag(object()) == ""

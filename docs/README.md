@@ -25,4 +25,5 @@ deeper into specific topics.
 
 - Script format reference with full examples (castellano):
   [skill/podcast-tts/references/formato-guion.md](../skill/podcast-tts/references/formato-guion.md).
-- Example scripts: [examples/](../examples/) and [guiones/](../guiones/).
+- Example scripts: [examples/](../examples/). `guiones/` is where the app saves your own scripts
+  (ignored by git).
