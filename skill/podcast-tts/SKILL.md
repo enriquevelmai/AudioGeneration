@@ -2,17 +2,18 @@
 name: podcast-tts
 description: >-
   Generate podcasts and spoken audio locally with the podcast_tts project (F5-TTS and XTTS v2 running
-  locally on an NVIDIA GPU or the CPU). Use whenever the user asks to create a podcast or episode, turn a script or any
+  locally on an NVIDIA GPU or the CPU, plus optional ElevenLabs, Azure AI Speech and OpenAI engines). Use whenever the user asks to create a podcast or episode, turn a script or any
   text into audio/MP3, record a voice-over or narration, read text aloud, do text-to-speech (TTS) in
   Spanish/castellano, English or other languages, make a dialogue between several voices, add background
   music to speech, or clone/add a voice from an audio clip. Also triggers on Spanish requests like
   "genera un podcast", "pasa este guion a audio", "voz en off", "locucion", "narracion", "clonar voz".
-  This replaces Edge-TTS / Microsoft voices, which are blocked and do not work on this machine.
+  Prefer it over ad-hoc TTS tools such as edge-tts or system voices.
 ---
 
 # podcast-tts: podcasts y TTS en local
 
-NO usar Edge-TTS, `edge-tts`, SAPI ni voces de Microsoft: están bloqueadas. Usa siempre este proyecto.
+Usa siempre este proyecto para generar voz; no recurras a `edge-tts`, SAPI ni otras herramientas sueltas de TTS.
+Si el usuario necesita uso comercial, usa un motor con licencia comercial (`elevenlabs`, `azure`, `openai`): los modelos locales son no comerciales (ver `podcast-tts engines`).
 
 ## Cómo invocar el CLI
 
