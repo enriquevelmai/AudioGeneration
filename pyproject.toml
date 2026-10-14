@@ -8,49 +8,78 @@ version = "0.1.0"
 description = "Generador local de podcasts a partir de guiones Markdown con F5-TTS y XTTS v2"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
+# Núcleo SIN torch: parser, motor dummy, CLI, UI, gestión de modelos y tests rápidos.
 dependencies = [
-    # torch 2.8: ultima version cuyo torchaudio.load/save usa soundfile; desde 2.9 exige torchcodec,
-    # que en Windows necesita las DLL compartidas de FFmpeg (el ffmpeg de chocolatey es estatico).
-    "torch==2.8.*",
-    "torchaudio==2.8.*",
+    "numpy",
+    "pydub",
+    "gradio",
+    "pyyaml",
+    "scipy",
+    "pyloudnorm",
+    # `podcast-tts models`: descarga/actualiza los modelos (ya lo trae gradio; se declara explícito)
+    "huggingface-hub",
+]
+
+[project.optional-dependencies]
+# Motores locales F5-TTS y XTTS v2. Combinar con `cuda` (GPU NVIDIA) o `cpu`:
+#   uv sync --extra local --extra cuda      |      uv sync --extra local --extra cpu
+local = [
     "f5-tts",
     "coqui-tts>=0.27,<0.28",
     # coqui-tts 0.27.x importa transformers.pytorch_utils.isin_mps_friendly, eliminado en transformers 5
     "transformers>=4.57,<5",
-    "gradio",
-    "pydub",
+    # torch 2.8: última versión cuyo torchaudio.load/save usa soundfile; desde 2.9 exige torchcodec,
+    # que en Windows necesita las DLL compartidas de FFmpeg (el ffmpeg habitual es estático).
+    "torch==2.8.*",
+    "torchaudio==2.8.*",
     "soundfile",
-    "numpy",
 ]
-
-[project.optional-dependencies]
+# Variante de torch: mutuamente excluyentes (ver [tool.uv] conflicts y [tool.uv.sources]).
+cuda = ["torch==2.8.*", "torchaudio==2.8.*"]
+cpu = ["torch==2.8.*", "torchaudio==2.8.*"]
 dev = ["pytest"]
+
+[project.scripts]
+podcast-tts = "podcast_tts.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/podcast_tts"]
 
-# torch/torchaudio con CUDA 12.6 (RTX 4080 SUPER, driver 610.88)
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+# `pytest` excluye los tests lentos (modelos reales); `pytest -m slow` los ejecuta.
+addopts = "-m 'not slow'"
+markers = [
+    "slow: sintetiza con los modelos reales (F5-TTS / XTTS v2); requiere el extra local y modelos descargados",
+]
+
+[tool.uv]
+# Windows (uso real) y Linux (CI con núcleo + dev). Resolver solo estas plataformas evita que el
+# lockfile universal elija versiones antiguas para plataformas que no se usan.
+environments = ["sys_platform == 'win32'", "sys_platform == 'linux'"]
+# Sin esto el resolvedor del lock retrocede a datasets 2.14 (2023), incompatible con fsspec moderno.
+constraint-dependencies = ["datasets>=4"]
+# Patrón oficial de uv para PyTorch: una variante u otra, nunca las dos.
+conflicts = [[{ extra = "cpu" }, { extra = "cuda" }]]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu126", extra = "cuda" },
+]
+torchaudio = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu126", extra = "cuda" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+# CUDA 12.6 (sm_50-sm_90: GTX 900 a RTX 40). Las RTX 50 (Blackwell, sm_120) necesitarían cu128.
 [[tool.uv.index]]
 name = "pytorch-cu126"
 url = "https://download.pytorch.org/whl/cu126"
 explicit = true
-
-[tool.uv.sources]
-torch = { index = "pytorch-cu126" }
-torchaudio = { index = "pytorch-cu126" }
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src"]
-# `pytest` excluye los tests lentos (modelos reales en GPU); `pytest -m slow` los ejecuta.
-addopts = "-m 'not slow'"
-markers = [
-    "slow: sintetiza con los modelos reales (F5-TTS / XTTS v2); requiere GPU y modelos descargados",
-]
-
-[tool.uv]
-# El proyecto solo se usa en Windows x64; resolver solo para esa plataforma evita
-# que el lockfile universal elija versiones antiguas (p.ej. datasets 2.14).
-environments = ["sys_platform == 'win32'"]
-# Sin esto el resolvedor del lock retrocede a datasets 2.14 (2023), incompatible con fsspec moderno.
-constraint-dependencies = ["datasets>=4"]
