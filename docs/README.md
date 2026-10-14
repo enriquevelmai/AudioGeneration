@@ -10,6 +10,7 @@ deeper into specific topics.
 | [MODELS_AND_LICENSES.md](../MODELS_AND_LICENSES.md) | English | Every model and cloud service: repository, license, commercial use, download and cache location |
 | [COMMERCIAL_USE.md](COMMERCIAL_USE.md) | English | Which engines allow commercial use, setting up ElevenLabs / Azure AI Speech / OpenAI, voice consent, pre-publishing checklist |
 | [SKILL.md](SKILL.md) | Castellano | The optional `podcast-tts` skill for Claude Code: how it finds the project, installing and removing it |
+| [MCP.md](MCP.md) | English | The MCP server for AI assistants (Claude Desktop, Claude Code, Cursor, VS Code...): installation, tools, timeouts, security |
 
 ## For developers
 
