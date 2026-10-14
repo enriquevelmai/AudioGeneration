@@ -55,6 +55,7 @@ EngineResolver = Callable[[str], TTSEngine]
 
 DEFAULT_CACHE_DIR = PROJECT_ROOT / ".cache" / "tts"
 MAX_EPISODE_SECONDS = 24 * 3600  # tope de seguridad de la línea temporal
+AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".ogg", ".flac", ".m4a", ".aac", ".opus"})
 
 
 class AssembleError(RuntimeError):
@@ -359,6 +360,11 @@ def _resolve_path(raw: str, options: AssembleOptions, line: int | None) -> Path:
             raise AssembleError(
                 f"{where}ruta de audio no permitida '{raw}': en modo remoto solo se admiten "
                 "rutas relativas a la carpeta del guion o del proyecto, sin '..'"
+            )
+        if path.suffix.lower() not in AUDIO_EXTENSIONS:
+            raise AssembleError(
+                f"{where}ruta de audio no permitida '{raw}': en modo remoto solo se admiten "
+                f"ficheros de audio ({', '.join(sorted(AUDIO_EXTENSIONS))})"
             )
         roots = [r.resolve() for r in (options.base_dir, PROJECT_ROOT) if r is not None]
         for root in roots:

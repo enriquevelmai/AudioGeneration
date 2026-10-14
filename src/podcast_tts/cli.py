@@ -7,7 +7,7 @@ Ejemplos::
     python -m podcast_tts voices list
     python -m podcast_tts voices add ana clip.wav --text "Transcripción del clip" --lang es
     python -m podcast_tts voices remove ana
-    python -m podcast_tts ui [--port 7860] [--host 127.0.0.1] [--share]
+    python -m podcast_tts ui [--port 7860] [--host 127.0.0.1] [--share] [--auth usuario:clave]
     python -m podcast_tts desktop [--browser] [--debug]
     python -m podcast_tts engines [--json]
     python -m podcast_tts config show | set OPENAI_API_KEY | unset OPENAI_API_KEY
@@ -448,6 +448,9 @@ def build_parser() -> argparse.ArgumentParser:
     u.add_argument("--port", type=int, default=7860, help="puerto (por defecto 7860)")
     u.add_argument("--host", default="127.0.0.1", help="interfaz de red (por defecto 127.0.0.1)")
     u.add_argument("--share", action="store_true", help="crea un enlace público temporal de Gradio")
+    u.add_argument("--auth", default=None, metavar="USUARIO:CLAVE",
+                   help="usuario y clave de acceso; obligatorio con --share o con un --host que "
+                        "no sea 127.0.0.1/localhost (también con la variable PODCAST_TTS_AUTH)")
     u.add_argument("--inbrowser", action="store_true", help="abre el navegador al arrancar")
     u.set_defaults(func=_cmd_ui)
 
