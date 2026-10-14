@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .base import EngineError
+from .base import EngineError, LicenseInfo
 
 if TYPE_CHECKING:
     from ..voices import Voice
@@ -91,6 +91,13 @@ class XTTSEngine:
     """
 
     name = "xtts"
+    license_info = LicenseInfo(
+        name="Coqui Public Model License 1.0.0",
+        url="https://coqui.ai/cpml",
+        commercial_use=False,
+        notes="Pesos de XTTS v2: solo uso no comercial (CPML). Coqui ya no vende licencias "
+              "comerciales. El código de coqui-tts es MPL-2.0, pero los pesos no.",
+    )
 
     def __init__(
         self,

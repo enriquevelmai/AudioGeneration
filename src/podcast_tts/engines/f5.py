@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .base import EngineError
+from .base import EngineError, LicenseInfo
 
 if TYPE_CHECKING:
     from ..voices import Voice
@@ -146,6 +146,13 @@ class F5Engine:
     """
 
     name = "f5"
+    license_info = LicenseInfo(
+        name="CC-BY-NC-4.0",
+        url="https://creativecommons.org/licenses/by-nc/4.0/",
+        commercial_use=False,
+        notes="Pesos de F5TTS_v1_Base (SWivid/F5-TTS) y jpgallegoar/F5-Spanish: solo uso no "
+              "comercial y con atribución. El código de F5-TTS es MIT, pero los pesos no.",
+    )
 
     def __init__(
         self,

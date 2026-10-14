@@ -5,7 +5,12 @@ Estructura de cada voz::
     voices/<nombre>/
         ref.wav     clip de referencia (mono, 24 kHz, 16 bit, 5-15 s)
         ref.txt     transcripción exacta del clip (necesaria para F5-TTS)
-        voice.json  {name, lang, engine, description, xtts_speaker, speed}
+        voice.json  {name, lang, engine, description, xtts_speaker, speed,
+                     provider_voice_id, provider_options}
+
+Las voces de motores en la nube (ElevenLabs, Azure, OpenAI...) no necesitan
+``ref.wav``: usan ``provider_voice_id`` (ID o nombre de la voz en el proveedor) y,
+opcionalmente, ``provider_options`` (dict con opciones propias del proveedor).
 
 El directorio por defecto es ``<proyecto>/voices``; se puede cambiar con la
 variable de entorno ``PODCAST_TTS_VOICES_DIR`` o pasando ``voices_dir``.
@@ -36,12 +41,12 @@ __all__ = [
     "list_voices",
     "list_xtts_speakers",
     "remove_voice",
+    "voice_engines",
 ]
 
 REF_SAMPLE_RATE = 24000
 MAX_REF_SECONDS = 15.0
 MIN_REF_SECONDS = 3.0
-VOICE_ENGINES = ("f5", "xtts", "dummy")
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]*$")
 
@@ -131,6 +136,8 @@ class Voice:
     xtts_speaker: str | None = None
     speed: float = 1.0
     extra: dict[str, Any] = field(default_factory=dict)
+    provider_voice_id: str | None = None
+    provider_options: dict[str, Any] = field(default_factory=dict)
 
     @property
     def ref_wav(self) -> Path:
@@ -158,6 +165,12 @@ class Voice:
         if self.has_ref:
             st = self.ref_wav.stat()
             parts += [str(st.st_size), str(int(st.st_mtime))]
+        # Solo si existen, para no invalidar la caché de las voces locales ya generadas.
+        if self.provider_voice_id or self.provider_options:
+            parts += [
+                self.provider_voice_id or "",
+                json.dumps(self.provider_options, sort_keys=True, ensure_ascii=False, default=str),
+            ]
         return "|".join(parts)
 
     def to_dict(self) -> dict[str, Any]:
@@ -170,6 +183,10 @@ class Voice:
             "xtts_speaker": self.xtts_speaker,
             "speed": self.speed,
         }
+        if self.provider_voice_id:
+            data["provider_voice_id"] = self.provider_voice_id
+        if self.provider_options:
+            data["provider_options"] = dict(self.provider_options)
         data.update(self.extra)
         return data
 
@@ -183,7 +200,11 @@ class Voice:
                 data = json.loads(cfg.read_text(encoding="utf-8"))
             except json.JSONDecodeError as exc:
                 raise VoiceError(f"voice.json inválido en {path}: {exc}") from exc
-        known = {"name", "lang", "engine", "description", "xtts_speaker", "speed"}
+        known = {"name", "lang", "engine", "description", "xtts_speaker", "speed",
+                 "provider_voice_id", "provider_options"}
+        options = data.get("provider_options") or {}
+        if not isinstance(options, dict):
+            raise VoiceError(f"'provider_options' debe ser un objeto JSON en {cfg}")
         return cls(
             name=path.name,
             path=path,
@@ -193,6 +214,8 @@ class Voice:
             xtts_speaker=data.get("xtts_speaker") or None,
             speed=float(data.get("speed") or 1.0),
             extra={k: v for k, v in data.items() if k not in known},
+            provider_voice_id=str(data.get("provider_voice_id") or "").strip() or None,
+            provider_options=dict(options),
         )
 
 
@@ -200,6 +223,28 @@ def default_voices_dir() -> Path:
     """Directorio de voces: ``$PODCAST_TTS_VOICES_DIR`` o ``<proyecto>/voices``."""
     env = os.environ.get("PODCAST_TTS_VOICES_DIR")
     return Path(env) if env else PROJECT_ROOT / "voices"
+
+
+def voice_engines() -> tuple[str, ...]:
+    """Motores válidos para una voz (integrados + plugins; ver :mod:`podcast_tts.engines`)."""
+    from .engines import engine_names
+
+    return engine_names()
+
+
+def __getattr__(attr: str) -> Any:  # PEP 562: VOICE_ENGINES dinámico (compatibilidad)
+    if attr == "VOICE_ENGINES":
+        return voice_engines()
+    raise AttributeError(f"module {__name__!r} has no attribute {attr!r}")
+
+
+def _engine_kind(engine: str) -> str:
+    from .engines import EngineError, engine_kind
+
+    try:
+        return engine_kind(engine)
+    except EngineError:
+        return "local"
 
 
 def _dir(voices_dir: str | Path | None) -> Path:
@@ -278,18 +323,32 @@ def add_voice(
     voices_dir: str | Path | None = None,
     overwrite: bool = False,
     max_seconds: float = MAX_REF_SECONDS,
+    provider_voice_id: str | None = None,
+    provider_options: dict[str, Any] | None = None,
 ) -> Voice:
     """Crea (o sobrescribe) una voz.
 
     ``wav_path`` puede ser cualquier formato que lea ffmpeg; se convierte a mono
-    24 kHz 16 bit y se recorta a ``max_seconds``. Puede ser ``None`` solo si se
-    usa un ``xtts_speaker`` integrado. F5-TTS necesita ``transcript``.
+    24 kHz 16 bit y se recorta a ``max_seconds``. Puede ser ``None`` si se usa un
+    ``xtts_speaker`` integrado o si la voz es de un motor en la nube (``engine``
+    ``elevenlabs``, ``azure``, ``openai``...), que necesita ``provider_voice_id``.
+    F5-TTS necesita ``transcript``.
     """
     _validate_name(name)
-    engine = engine.lower()
-    if engine not in VOICE_ENGINES:
-        raise VoiceError(f"motor desconocido '{engine}' (válidos: {', '.join(VOICE_ENGINES)})")
-    if wav_path is None and not xtts_speaker:
+    engine = (engine or "").lower()
+    valid = voice_engines()
+    if engine not in valid:
+        raise VoiceError(f"motor desconocido '{engine}' (válidos: {', '.join(valid)})")
+    provider_voice_id = (provider_voice_id or "").strip() or None
+    if provider_options is not None and not isinstance(provider_options, dict):
+        raise VoiceError("provider_options debe ser un diccionario")
+    cloud = _engine_kind(engine) == "cloud"
+    if cloud and not provider_voice_id:
+        raise VoiceError(
+            f"el motor '{engine}' es en la nube: hace falta el ID de voz del proveedor "
+            "(provider_voice_id / --provider-voice-id)"
+        )
+    if wav_path is None and not xtts_speaker and not cloud:
         raise VoiceError("hace falta un clip de referencia (wav_path) o un xtts_speaker")
     if wav_path is not None and not Path(wav_path).is_file():
         raise VoiceError(f"no existe el fichero de audio {wav_path}")
@@ -313,7 +372,8 @@ def add_voice(
         _convert_reference(src, dst, max_seconds)
         if src.name == "_ref_src.wav":
             src.unlink(missing_ok=True)
-    (path / "ref.txt").write_text(transcript.strip() + "\n", encoding="utf-8")
+    if wav_path is not None or not cloud or transcript.strip():
+        (path / "ref.txt").write_text(transcript.strip() + "\n", encoding="utf-8")
 
     voice = Voice(
         name=name,
@@ -323,6 +383,8 @@ def add_voice(
         description=description,
         xtts_speaker=xtts_speaker or None,
         speed=float(speed),
+        provider_voice_id=provider_voice_id,
+        provider_options=dict(provider_options or {}),
     )
     (path / "voice.json").write_text(
         json.dumps(voice.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

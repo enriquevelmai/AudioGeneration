@@ -40,6 +40,7 @@ __all__ = [
     "Sfx",
     "Speech",
     "chunk_text",
+    "known_engines",
     "parse_file",
     "parse_script",
     "segment_from_dict",
@@ -53,7 +54,19 @@ DEFAULT_MUSIC_VOLUME = 1.0
 DEFAULT_BG_VOLUME = 0.15
 DEFAULT_BG_FADE = 1.5
 DEFAULT_SFX_VOLUME = 1.0
-KNOWN_ENGINES = ("f5", "xtts", "dummy")
+
+
+def known_engines() -> tuple[str, ...]:
+    """Motores válidos en los guiones: integrados + plugins (ver :mod:`podcast_tts.engines`)."""
+    from .engines import engine_names
+
+    return engine_names()
+
+
+def __getattr__(attr: str) -> Any:  # PEP 562: KNOWN_ENGINES dinámico (compatibilidad)
+    if attr == "KNOWN_ENGINES":
+        return known_engines()
+    raise AttributeError(f"module {__name__!r} has no attribute {attr!r}")
 
 
 class ScriptParseError(ValueError):
@@ -375,10 +388,11 @@ def _build_meta(data: dict[str, Any], line: int) -> ScriptMeta:
             setattr(meta, target, None if value is None else str(value))
     if meta.default_engine:
         meta.default_engine = meta.default_engine.lower()
-        if meta.default_engine not in KNOWN_ENGINES:
+        valid = known_engines()
+        if meta.default_engine not in valid:
             raise ScriptParseError(
                 f"motor desconocido '{meta.default_engine}' "
-                f"(válidos: {', '.join(KNOWN_ENGINES)})",
+                f"(válidos: {', '.join(valid)})",
                 line,
             )
     return meta
@@ -579,9 +593,10 @@ class _Parser:
             state.speed = _float_attr(attrs["speed"], "speed", line, lo=0.25, hi=4.0)
         if "engine" in attrs:
             engine = attrs["engine"].lower()
-            if engine not in KNOWN_ENGINES:
+            valid = known_engines()
+            if engine not in valid:
                 raise ScriptParseError(
-                    f"motor desconocido '{engine}' (válidos: {', '.join(KNOWN_ENGINES)})", line
+                    f"motor desconocido '{engine}' (válidos: {', '.join(valid)})", line
                 )
             state.engine = engine
         self.state = state

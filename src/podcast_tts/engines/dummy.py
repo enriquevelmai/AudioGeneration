@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from .base import LicenseInfo
+
 if TYPE_CHECKING:
     from ..voices import Voice
 
@@ -17,6 +19,13 @@ class DummyEngine:
     """Motor "falso" determinista, sin dependencias pesadas (para tests y previsualizar tiempos)."""
 
     name = "dummy"
+    kind = "local"
+    license_info = LicenseInfo(
+        name="sin modelo (tonos sintéticos)",
+        url="",
+        commercial_use=True,
+        notes="Genera tonos para pruebas; no usa modelos ni datos de terceros.",
+    )
 
     def __init__(self, sample_rate: int = 24000, seconds_per_char: float = 0.06) -> None:
         self._sample_rate = sample_rate
