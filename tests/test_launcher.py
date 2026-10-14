@@ -1,4 +1,4 @@
-"""Tests de launcher.py (AudioGeneration.exe) sin compilarlo ni abrir diálogos."""
+"""Tests of launcher.py (AudioGeneration.exe) without building it or opening dialogs."""
 
 from __future__ import annotations
 
@@ -25,16 +25,16 @@ def test_mutex_name_matches_desktop(launcher, tmp_path: Path) -> None:
     from podcast_tts import desktop
 
     assert launcher.mutex_name() == desktop.mutex_name() == desktop.MUTEX_NAME
-    other = tmp_path / "otra instalación"
+    other = tmp_path / "other instalación"
     other.mkdir()
     assert launcher.mutex_name(str(other)) == desktop.mutex_name(other)
     assert launcher.mutex_name(str(other)) != launcher.mutex_name()
-    # Mayúsculas/minúsculas y barras no cambian el nombre en Windows
+    # Case and slashes do not change the name on Windows
     if sys.platform == "win32":
         assert launcher.mutex_name(str(other).upper()) == launcher.mutex_name(str(other))
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="mutex con nombre de Windows")
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows named mutex")
 def test_app_already_running_detects_desktop_mutex(launcher, tmp_path: Path) -> None:
     from podcast_tts import desktop
 
@@ -94,7 +94,7 @@ def test_bat_command_line_runs_bat_in_odd_paths(launcher, tmp_path: Path, dirnam
     d.mkdir()
     bat = d / "eco.bat"
     out = tmp_path / "out.txt"
-    # out está en tmp_path (ASCII): el .bat se puede escribir en ASCII puro.
+    # out is in tmp_path (ASCII): the .bat can be written in pure ASCII.
     bat.write_bytes(f'@echo off\r\n> "{out}" echo ok %1\r\nexit /b 7\r\n'.encode("ascii"))
     r = subprocess.run(launcher.bat_command_line(str(bat), "/y"), cwd=str(d))
     assert r.returncode == 7
@@ -102,22 +102,22 @@ def test_bat_command_line_runs_bat_in_odd_paths(launcher, tmp_path: Path, dirnam
 
 
 def test_update_failure_message(launcher) -> None:
-    assert "cambios locales" in launcher.update_failure_message(launcher.UPDATE_PULL_FAILED)
-    assert "código 1" in launcher.update_failure_message(1)
+    assert "local changes" in launcher.update_failure_message(launcher.UPDATE_PULL_FAILED)
+    assert "code 1" in launcher.update_failure_message(1)
 
 
 def test_startup_failure_detection(launcher, tmp_path: Path, monkeypatch) -> None:
     dead = subprocess.Popen([sys.executable, "-c", "import sys; sys.exit(1)"])
     assert launcher.startup_failure(dead, timeout=20) == 1
     ok = subprocess.Popen([sys.executable, "-c", "pass"])
-    assert launcher.startup_failure(ok, timeout=20) is None  # salida limpia (2.ª instancia)
+    assert launcher.startup_failure(ok, timeout=20) is None  # clean exit (2nd instance)
     alive = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
     try:
         assert launcher.startup_failure(alive, timeout=0.5) is None
     finally:
         alive.kill()
     log = tmp_path / "launcher.log"
-    log.write_text("linea 1\nNo module named podcast_tts\n", encoding="utf-8")
+    log.write_text("line 1\nNo module named podcast_tts\n", encoding="utf-8")
     monkeypatch.setattr(launcher, "LOG_PATH", str(log))
     monkeypatch.setenv("PODCAST_TTS_STATE_DIR", str(tmp_path / "state"))
     msg = launcher.startup_failure_message(1)
@@ -128,5 +128,5 @@ def test_clean_env_sets_pythonpath_to_src(launcher, monkeypatch) -> None:
     monkeypatch.delenv("PYTHONPATH", raising=False)
     env = launcher.clean_env()
     assert env["PYTHONPATH"].split(os.pathsep)[0] == str(Path(launcher.ROOT) / "src")
-    monkeypatch.setenv("PYTHONPATH", "otra")
-    assert launcher.clean_env()["PYTHONPATH"].endswith(os.pathsep + "otra")
+    monkeypatch.setenv("PYTHONPATH", "other")
+    assert launcher.clean_env()["PYTHONPATH"].endswith(os.pathsep + "other")

@@ -1,4 +1,4 @@
-"""Voces de motores en la nube, CLI (engines, config, voices add) y funciones de la UI."""
+"""Cloud engine voices, CLI (engines, config, voices add) and UI functions."""
 
 from __future__ import annotations
 
@@ -20,30 +20,30 @@ def isolated_env(tmp_path, monkeypatch):
     monkeypatch.setenv("PODCAST_TTS_ENV_FILE", str(tmp_path / ".env"))
 
 
-# --------------------------------------------------------------------------- voces
+# --------------------------------------------------------------------------- voices
 
 
 def test_add_cloud_voice_without_wav(tmp_path) -> None:
     vdir = tmp_path / "voices"
-    v = add_voice("narradora", None, lang="es", engine="azure",
+    v = add_voice("narrator", None, lang="es", engine="azure",
                   provider_voice_id="es-ES-ElviraNeural",
                   provider_options={"style": "cheerful"}, voices_dir=vdir)
-    assert not v.has_ref and not (vdir / "narradora" / "ref.txt").exists()
-    data = json.loads((vdir / "narradora" / "voice.json").read_text(encoding="utf-8"))
+    assert not v.has_ref and not (vdir / "narrator" / "ref.txt").exists()
+    data = json.loads((vdir / "narrator" / "voice.json").read_text(encoding="utf-8"))
     assert data["provider_voice_id"] == "es-ES-ElviraNeural"
     assert data["provider_options"] == {"style": "cheerful"}
-    loaded = get_voice("narradora", vdir)
+    loaded = get_voice("narrator", vdir)
     assert loaded.engine == "azure" and loaded.provider_voice_id == "es-ES-ElviraNeural"
     assert loaded.provider_options == {"style": "cheerful"} and loaded.extra == {}
-    assert [x.name for x in list_voices(vdir)] == ["narradora"]
+    assert [x.name for x in list_voices(vdir)] == ["narrator"]
 
 
 def test_cloud_voice_requires_provider_id(tmp_path) -> None:
     with pytest.raises(VoiceError, match="provider_voice_id"):
         add_voice("x", None, engine="openai", voices_dir=tmp_path)
-    with pytest.raises(VoiceError, match="motor desconocido"):
+    with pytest.raises(VoiceError, match="unknown engine"):
         add_voice("x", None, engine="noexiste", provider_voice_id="a", voices_dir=tmp_path)
-    with pytest.raises(VoiceError, match="diccionario"):
+    with pytest.raises(VoiceError, match="dictionary"):
         add_voice("x", None, engine="openai", provider_voice_id="nova",
                   provider_options=["no"], voices_dir=tmp_path)  # type: ignore[arg-type]
 
@@ -54,18 +54,18 @@ def test_fingerprint_includes_provider_data(tmp_path) -> None:
     other_opts = Voice("a", tmp_path / "a", engine="openai", provider_voice_id="nova",
                        provider_options={"model": "tts-1"})
     assert len({base.fingerprint(), other_id.fingerprint(), other_opts.fingerprint()}) == 3
-    # Las voces locales conservan la huella de siempre (no se invalida la caché existente)
+    # Local voices keep the same fingerprint as before (the existing cache stays valid)
     local = Voice("b", tmp_path / "b", engine="xtts", xtts_speaker="Ana Florence")
     assert local.fingerprint() == "b|xtts|Ana Florence|"
     assert "provider_voice_id" not in local.to_dict()
 
 
 def test_invalid_provider_options_in_json(tmp_path) -> None:
-    d = tmp_path / "rara"
+    d = tmp_path / "odd"
     d.mkdir()
     (d / "voice.json").write_text('{"engine": "openai", "provider_options": [1]}', encoding="utf-8")
     with pytest.raises(VoiceError, match="provider_options"):
-        get_voice("rara", tmp_path)
+        get_voice("odd", tmp_path)
 
 
 # --------------------------------------------------------------------------- CLI
@@ -76,7 +76,7 @@ def test_cli_engines(capsys) -> None:
     out = capsys.readouterr().out
     for name in ("f5", "xtts", "dummy", "elevenlabs", "azure", "openai"):
         assert name in out
-    assert "CC-BY-NC-4.0" in out and "sin configurar" in out
+    assert "CC-BY-NC-4.0" in out and "not configured" in out
     assert cli.main(["engines", "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
     assert data["f5"]["commercial_use"] is False
@@ -99,10 +99,10 @@ def test_cli_config_set_show_unset(capsys, monkeypatch, tmp_path) -> None:
     assert cli.main(["config", "show"]) == 0
     out = capsys.readouterr().out
     assert FAKE_KEY not in out
-    assert "sk-...mnop (.env)" in out and "westeurope" in out and "(sin definir)" in out
+    assert "sk-...mnop (.env)" in out and "westeurope" in out and "(not set)" in out
 
     assert cli.main(["config", "unset", "OPENAI_API_KEY"]) == 0
-    assert "borrada" in capsys.readouterr().out
+    assert "removed" in capsys.readouterr().out
     assert FAKE_KEY not in (tmp_path / ".env").read_text(encoding="utf-8")
 
 
@@ -121,8 +121,8 @@ def test_cli_voices_add_cloud(tmp_path, capsys) -> None:
     assert v.provider_voice_id == "nova"
     assert v.provider_options == {"model": "tts-1-hd", "speed_hint": 1.5}
     assert cli.main(["voices", "list", "--voices-dir", str(vdir)]) == 0
-    assert "voz del proveedor 'nova'" in capsys.readouterr().out
-    # Sin ID -> error en castellano, código 1
+    assert "provider voice 'nova'" in capsys.readouterr().out
+    # Without an ID -> readable error, exit code 1
     assert cli.main(["voices", "add", "otra", "--engine", "elevenlabs",
                      "--voices-dir", str(vdir)]) == 1
     assert "provider_voice_id" in capsys.readouterr().err
@@ -130,7 +130,7 @@ def test_cli_voices_add_cloud(tmp_path, capsys) -> None:
 
 def test_cli_license_notice(tmp_path, capsys, monkeypatch) -> None:
     script = tmp_path / "g.md"
-    script.write_text("[voz:ana] Hola.\n", encoding="utf-8")
+    script.write_text("[voice:ana] Hello.\n", encoding="utf-8")
     vdir = tmp_path / "voices"
     add_voice("ana", None, engine="xtts", xtts_speaker="Ana Florence", voices_dir=vdir)
 
@@ -140,11 +140,11 @@ def test_cli_license_notice(tmp_path, capsys, monkeypatch) -> None:
     args = ["generate", str(script), "-o", str(tmp_path / "o.mp3"), "--voices-dir", str(vdir)]
     assert cli.main(args) == 0
     err = capsys.readouterr().err
-    assert err.count("Aviso de licencia") == 1 and "'xtts'" in err and "NO comercial" in err
+    assert err.count("License notice") == 1 and "'xtts'" in err and "NON-commercial" in err
     assert cli.main([*args, "--no-license-notice"]) == 0
-    assert "Aviso de licencia" not in capsys.readouterr().err
+    assert "License notice" not in capsys.readouterr().err
     assert cli.main([*args, "--engine", "dummy"]) == 0
-    assert "Aviso de licencia" not in capsys.readouterr().err
+    assert "License notice" not in capsys.readouterr().err
     assert len(called) == 3
 
 
@@ -166,22 +166,22 @@ def test_ui_settings_and_cloud_voice(tmp_path) -> None:
     status = ui.settings_status()
     assert "sk-...mnop" in status and FAKE_KEY not in status
     df = ui.engines_table()
-    row = df[df["Motor"] == "openai"].iloc[0]
-    assert row["Configurado"] == "sí" and row["Tipo"] == "nube"
-    assert df[df["Motor"] == "f5"].iloc[0]["Uso comercial"] == "no"
-    assert "borrada" in ui.delete_api_key("OPENAI_API_KEY")
+    row = df[df["Engine"] == "openai"].iloc[0]
+    assert row["Configured"] == "yes" and row["Type"] == "cloud"
+    assert df[df["Engine"] == "f5"].iloc[0]["Commercial use"] == "no"
+    assert "removed" in ui.delete_api_key("OPENAI_API_KEY")
 
-    assert "ID de la voz" in ui.create_voice("v1", None, "", "es", "openai", "", 1.0, None,
+    assert "voice ID" in ui.create_voice("v1", None, "", "es", "openai", "", 1.0, None,
                                               False, cfg)
     ok = ui.create_voice("v1", None, "", "es", "openai", "", 1.0, None, False, cfg,
                          provider_voice_id="nova")
     assert "✅" in ok
-    assert ui.voices_table(cfg)["ID proveedor"].tolist() == ["nova"]
+    assert ui.voices_table(cfg)["Provider ID"].tolist() == ["nova"]
 
-    script = "[voz:v1] Hola"
+    script = "[voice:v1] Hello"
     assert ui.generation_license_notice(script, ui.ENGINE_AUTO, cfg) == ""
-    assert "NO comercial" in ui.generation_license_notice(script, "xtts", cfg)
-    assert "NO comercial" in ui.generation_license_notice("", "f5", cfg)
-    assert ui.generation_license_notice("[voz:", ui.ENGINE_AUTO, cfg) == ""
+    assert "NON-commercial" in ui.generation_license_notice(script, "xtts", cfg)
+    assert "NON-commercial" in ui.generation_license_notice("", "f5", cfg)
+    assert ui.generation_license_notice("[voice:", ui.ENGINE_AUTO, cfg) == ""
     _, report = ui.validate_script(script, ui.ENGINE_AUTO, cfg)
-    assert "voz del proveedor 'nova'" in report
+    assert "provider voice 'nova'" in report

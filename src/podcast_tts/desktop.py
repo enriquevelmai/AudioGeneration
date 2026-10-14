@@ -1,29 +1,31 @@
-"""App de escritorio: la UI Gradio dentro de una ventana nativa (pywebview + WebView2).
+"""Desktop app: the Gradio UI inside a native window (pywebview + WebView2).
 
-Lanzar con::
+Launch with::
 
-    python -m podcast_tts desktop            # o: podcast-tts desktop
-    pythonw -m podcast_tts desktop           # sin consola (lo que hace AudioGeneration.exe)
+    python -m podcast_tts desktop            # or: podcast-tts desktop
+    pythonw -m podcast_tts desktop           # without a console (what AudioGeneration.exe does)
 
-Funcionamiento:
+How it works:
 
-- Abre enseguida una ventana con una pantalla de carga y, en segundo plano, construye la app
-  de :func:`podcast_tts.ui.build_app` y arranca su servidor en ``127.0.0.1`` en un puerto
-  libre (sin abrir el navegador). Cuando responde, la ventana navega a él.
-- El tamaño, la posición y si estaba maximizada se guardan al cerrar
+- It immediately opens a window with a loading screen and, in the background, builds the app
+  from :func:`podcast_tts.ui.build_app` and starts its server on ``127.0.0.1`` on a free port
+  (without opening the browser). Once it responds, the window navigates to it.
+- Size, position and whether it was maximized are saved on close
   (``%LOCALAPPDATA%\\AudioGeneration\\window.json``).
-- Al cerrar la ventana se para el servidor y termina el proceso.
-- Las descargas de Gradio abren el diálogo "Guardar como" de Windows; además la UI tiene el
-  botón "Abrir carpeta de salida".
-- Instancia única por instalación (el nombre del mutex lleva un hash de la carpeta del
-  proyecto): si ya hay una abierta, se trae su ventana al frente y no se arranca un segundo
-  servidor.
-- Sin ventana nativa y sin consola (pythonw), se abre el navegador y una ventanita con
-  "Abrir navegador" y "Cerrar AudioGeneration"; al cerrarla se para el servidor.
-- Si falta pywebview (extra ``desktop``) o el runtime WebView2, avisa y abre la UI en el
-  navegador.
+- Closing the window stops the server and ends the process.
+- Gradio downloads open the Windows "Save as" dialog; the UI also has an
+  "Open output folder" button.
+- Single instance per installation (the mutex name carries a hash of the project folder):
+  if one is already open, its window is brought to the front and no second server starts.
+- Without a native window and without a console (pythonw), the browser opens plus a small
+  window with "Open browser" and "Close AudioGeneration"; closing it stops the server.
+- If pywebview (``desktop`` extra) or the WebView2 runtime is missing, it warns and opens
+  the UI in the browser.
 
-Requiere el extra ``desktop`` (``uv sync --extra desktop``).
+User-facing texts follow the UI language (:mod:`podcast_tts.i18n`); the window title does not
+change, because the single-instance check looks the window up by title.
+
+Requires the ``desktop`` extra (``uv sync --extra desktop``).
 """
 
 from __future__ import annotations
@@ -42,30 +44,32 @@ import webbrowser
 from pathlib import Path
 from typing import Any, Sequence
 
+from .i18n import get_language, t
+
 APP_NAME = "AudioGeneration"
 WINDOW_TITLE = "AudioGeneration — Podcast TTS Studio"
 APP_USER_MODEL_ID = "enriquevelmai.AudioGeneration.Desktop"
 MUTEX_PREFIX = "Local\\AudioGeneration.PodcastTTS.Desktop"
-LOG_MAX_BYTES = 1_000_000  # desktop.log se rota a desktop.log.1 al pasar de ~1 MB
+LOG_MAX_BYTES = 1_000_000  # desktop.log rotates to desktop.log.1 above ~1 MB
 
 DEFAULT_SIZE = (1320, 900)
 MIN_SIZE = (900, 620)
-SERVER_TIMEOUT = 180.0  # s: la primera vez importar gradio/pandas puede tardar
+SERVER_TIMEOUT = 180.0  # s: the first import of gradio/pandas can be slow
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def install_id(root: str | Path | None = None) -> str:
-    """Hash corto de la carpeta del proyecto (distingue instalaciones en el mismo usuario).
+    """Short hash of the project folder (tells installations of the same user apart).
 
-    ``launcher.py`` calcula lo mismo para comprobar el mutex: si se cambia aquí, cámbialo allí.
+    ``launcher.py`` computes the same to check the mutex: if you change it here, change it there.
     """
     path = os.path.normcase(os.path.realpath(str(root or _PROJECT_ROOT)))
     return hashlib.sha256(path.encode("utf-8")).hexdigest()[:12]
 
 
 def mutex_name(root: str | Path | None = None) -> str:
-    """Nombre del mutex de instancia única de la instalación en ``root``."""
+    """Name of the single-instance mutex of the installation in ``root``."""
     return f"{MUTEX_PREFIX}.{install_id(root)}"
 
 
@@ -75,12 +79,12 @@ ICON_PNG = _PROJECT_ROOT / "assets" / "icon.png"
 
 
 # --------------------------------------------------------------------------- #
-# Estado persistente (tamaño de ventana, instancia en marcha, logs)
+# Persistent state (window size, running instance, logs)
 # --------------------------------------------------------------------------- #
 
 
 def state_dir() -> Path:
-    """Carpeta de estado por usuario (``PODCAST_TTS_STATE_DIR`` la sustituye, p.ej. en tests)."""
+    """Per-user state folder (``PODCAST_TTS_STATE_DIR`` replaces it, e.g. in tests)."""
     override = os.environ.get("PODCAST_TTS_STATE_DIR")
     if override:
         base = Path(override)
@@ -110,7 +114,7 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
 
 
 def load_window_state(path: Path | None = None) -> dict[str, Any]:
-    """Tamaño/posición guardados, saneados (valores absurdos -> por defecto)."""
+    """Saved size/position, sanitized (absurd values -> defaults)."""
     data = _read_json(path or state_dir() / "window.json")
     state: dict[str, Any] = {"width": DEFAULT_SIZE[0], "height": DEFAULT_SIZE[1], "x": None,
                              "y": None, "maximized": False}
@@ -136,7 +140,7 @@ def _instance_file() -> Path:
 
 
 def _rotate_log(path: Path, max_bytes: int | None = None) -> None:
-    """Rotación simple: si el log pasa de ``max_bytes`` se renombra a ``<log>.1``."""
+    """Simple rotation: if the log exceeds ``max_bytes`` it is renamed to ``<log>.1``."""
     try:
         if path.stat().st_size > (LOG_MAX_BYTES if max_bytes is None else max_bytes):
             path.replace(path.with_name(path.name + ".1"))
@@ -145,10 +149,10 @@ def _rotate_log(path: Path, max_bytes: int | None = None) -> None:
 
 
 def _setup_stdio() -> None:
-    """Con pythonw.exe no hay stdout/stderr: se redirigen a un log para no perder errores.
+    """With pythonw.exe there is no stdout/stderr: redirect them to a log so errors are kept.
 
-    Se abre en modo *append* (con rotación) y solo después de tomar el mutex de instancia
-    única, para que una segunda instancia no borre el log de la primera.
+    Opened in *append* mode (with rotation) and only after taking the single-instance mutex,
+    so a second instance does not wipe the first one's log.
     """
     if sys.stdout is not None and sys.stderr is not None:
         return
@@ -173,13 +177,13 @@ def _log(msg: str) -> None:
 
 
 def _has_console() -> bool:
-    """False si corre con pythonw.exe (sin consola donde ver los avisos)."""
+    """False when running under pythonw.exe (no console to show messages)."""
     exe = Path(sys.executable).name.lower()
     return not exe.startswith("pythonw") and sys.stderr is not None and sys.stderr.isatty()
 
 
 def notify(message: str, title: str = APP_NAME, error: bool = False, block: bool = False) -> None:
-    """Aviso al usuario: por consola y, si no hay consola, con un cuadro de diálogo de Windows."""
+    """Notify the user: on the console and, if there is none, with a Windows message box."""
     _log(message)
     if _has_console() or sys.platform != "win32":
         return
@@ -200,12 +204,12 @@ def notify(message: str, title: str = APP_NAME, error: bool = False, block: bool
 
 
 # --------------------------------------------------------------------------- #
-# Windows: AppUserModelID, instancia única y traer al frente
+# Windows: AppUserModelID, single instance and bring to front
 # --------------------------------------------------------------------------- #
 
 
 def set_app_user_model_id() -> None:
-    """Para que la barra de tareas muestre el icono de la app y no el de Python."""
+    """So the taskbar shows the app icon instead of Python's."""
     if sys.platform != "win32":
         return
     try:
@@ -217,10 +221,10 @@ def set_app_user_model_id() -> None:
 
 
 class SingleInstance:
-    """Mutex con nombre de Windows: solo una app de escritorio por sesión de usuario.
+    """Windows named mutex: only one desktop app per user session.
 
-    El sistema lo libera solo si el proceso muere, así que no deja bloqueos huérfanos.
-    En otros sistemas no hace nada (siempre ``acquire() == True``).
+    The system releases it if the process dies, so it never leaves orphan locks.
+    On other systems it does nothing (always ``acquire() == True``).
     """
 
     def __init__(self, name: str = MUTEX_NAME) -> None:
@@ -239,7 +243,7 @@ class SingleInstance:
         handle = kernel32.CreateMutexW(None, False, self.name)
         already = ctypes.get_last_error() == 183  # ERROR_ALREADY_EXISTS
         if not handle:
-            return True  # sin mutex no se bloquea el arranque
+            return True  # without a mutex, startup is not blocked
         if already:
             kernel32.CloseHandle(handle)
             return False
@@ -255,7 +259,7 @@ class SingleInstance:
 
 
 def focus_window(title: str = WINDOW_TITLE) -> bool:
-    """Trae al frente la ventana con ese título. True si la encontró."""
+    """Bring the window with that title to the front. True if it was found."""
     if sys.platform != "win32":
         return False
     import ctypes
@@ -270,8 +274,8 @@ def focus_window(title: str = WINDOW_TITLE) -> bool:
         user32.ShowWindow(hwnd, 9)  # SW_RESTORE
     else:
         user32.ShowWindow(hwnd, 5)  # SW_SHOW
-    # Windows solo deja robar el foco al proceso que recibió la última entrada: una pulsación
-    # sintética de Alt lo desbloquea (truco habitual y sin efectos visibles).
+    # Windows only lets the process that received the last input steal the focus: a synthetic
+    # Alt key press unlocks it (a common trick with no visible effect).
     user32.keybd_event(0x12, 0, 0, 0)
     user32.keybd_event(0x12, 0, 2, 0)
     user32.SetForegroundWindow(hwnd)
@@ -287,22 +291,22 @@ def _url_alive(url: str, timeout: float = 1.5) -> bool:
 
 
 def handle_second_instance() -> int:
-    """Otra instancia ya está en marcha: traerla al frente (o abrir su URL en el navegador)."""
+    """Another instance is already running: bring it to the front (or open its URL in the browser)."""
     if focus_window():
-        _log("La app ya estaba abierta: se trae su ventana al frente.")
+        _log("The app was already open: bringing its window to the front.")
         return 0
     info = _read_json(_instance_file())
     url = info.get("url")
     if isinstance(url, str) and _url_alive(url):
-        _log(f"La app ya está en marcha (sin ventana): se abre {url} en el navegador.")
+        _log(f"The app is already running (no window): opening {url} in the browser.")
         webbrowser.open(url)
         return 0
-    notify(f"{APP_NAME} ya se está iniciando. Espera unos segundos a que aparezca la ventana.")
+    notify(t("desktop.already_starting", app=APP_NAME))
     return 0
 
 
 # --------------------------------------------------------------------------- #
-# Servidor Gradio
+# Gradio server
 # --------------------------------------------------------------------------- #
 
 
@@ -313,7 +317,7 @@ def free_port(host: str = "127.0.0.1") -> int:
 
 
 class Server:
-    """El servidor Gradio de la UI, arrancado sin bloquear (``prevent_thread_lock``)."""
+    """The UI's Gradio server, started without blocking (``prevent_thread_lock``)."""
 
     def __init__(self, port: int = 0, voices_dir: str | None = None) -> None:
         self.port = port or free_port()
@@ -335,14 +339,14 @@ class Server:
                                                "url": self.url})
                 return self.url
             time.sleep(0.2)
-        raise TimeoutError(f"El servidor no respondió en {timeout:.0f} s ({self.url}).")
+        raise TimeoutError(f"The server did not respond within {timeout:.0f} s ({self.url}).")
 
     def stop(self) -> None:
         if self.app is not None:
             try:
                 self.app.close()
             except Exception as exc:  # noqa: BLE001
-                _log(f"Aviso al parar el servidor: {exc!r}")
+                _log(f"Warning while stopping the server: {exc!r}")
             self.app = None
         try:
             info = _read_json(_instance_file())
@@ -353,7 +357,7 @@ class Server:
 
 
 # --------------------------------------------------------------------------- #
-# Páginas internas (carga / error)
+# Internal pages (loading / error)
 # --------------------------------------------------------------------------- #
 
 _PAGE_CSS = """
@@ -397,8 +401,8 @@ def _icon_uri() -> str:
 
 
 def _page(body: str) -> str:
-    return (f'<!doctype html><html lang="es"><head><meta charset="utf-8"><title>{WINDOW_TITLE}'
-            f'</title><style>{_PAGE_CSS}</style></head><body><div class="box">{body}</div>'
+    return (f'<!doctype html><html lang="{get_language()}"><head><meta charset="utf-8">'
+            f'<title>{WINDOW_TITLE}</title><style>{_PAGE_CSS}</style></head><body><div class="box">{body}</div>'
             f"</body></html>")
 
 
@@ -407,7 +411,7 @@ def loading_html() -> str:
 
     logo = f'<img class="logo" src="{_icon_uri()}" alt="">' if ICON_PNG.is_file() else ""
     return _page(f'{logo}<h1>{APP_NAME}</h1><p class="sub">Podcast TTS Studio · v{__version__}'
-                 f'<br>Arrancando… la primera vez puede tardar unos segundos.</p>'
+                 f'<br>{t("desktop.loading")}</p>'
                  f'<div class="bars"><span></span><span></span><span></span><span></span>'
                  f'<span></span></div>')
 
@@ -416,36 +420,38 @@ def error_html(exc: BaseException) -> str:
     import html
 
     detail = html.escape("".join(traceback.format_exception(exc)).strip()[-4000:])
-    return _page(f'<h1>No se pudo arrancar {APP_NAME}</h1><p class="sub">Revisa el entorno con '
-                 f'<code>.venv\\Scripts\\python.exe scripts\\check_env.py</code> o reinstala con '
-                 f'<code>bats\\install.bat</code>.</p><pre>{detail}</pre>')
+    hint = t("desktop.error_hint",
+             check="<code>.venv\\Scripts\\python.exe scripts\\check_env.py</code>",
+             install="<code>bats\\install.bat</code>")
+    return _page(f'<h1>{t("desktop.error_title", app=APP_NAME)}</h1><p class="sub">{hint}</p>'
+                 f'<pre>{detail}</pre>')
 
 
 # --------------------------------------------------------------------------- #
-# Arranque
+# Startup
 # --------------------------------------------------------------------------- #
 
 
 def control_window(url: str, *, open_browser: Any = None, tk_module: Any = None,
                    on_ready: Any = None) -> bool:
-    """Ventanita de control cuando la UI está en el navegador y no hay consola.
+    """Small control window when the UI is in the browser and there is no console.
 
-    Muestra "AudioGeneration se está ejecutando en el navegador" con [Abrir navegador] y
-    [Cerrar AudioGeneration]. Bloquea hasta que se cierra. Devuelve ``False`` si tkinter no
-    está disponible (entonces el llamante debe bloquear de otra forma).
-    ``tk_module`` y ``on_ready(root)`` permiten probarla sin mostrarla de verdad.
+    Shows "AudioGeneration is running in the browser" with [Open browser] and
+    [Close AudioGeneration]. Blocks until it is closed. Returns ``False`` if tkinter is not
+    available (the caller must then block some other way).
+    ``tk_module`` and ``on_ready(root)`` allow testing it without really showing it.
     """
     if tk_module is None:
         try:
             import tkinter as tk_module  # type: ignore[no-redef]
-        except Exception:  # noqa: BLE001 - Python sin Tcl/Tk
+        except Exception:  # noqa: BLE001 - Python without Tcl/Tk
             return False
     tk = tk_module
     open_browser = open_browser or webbrowser.open
     try:
         root = tk.Tk()
-    except Exception as exc:  # noqa: BLE001 - p.ej. Tcl/Tk mal instalado
-        _log(f"No se pudo abrir la ventana de control: {exc!r}")
+    except Exception as exc:  # noqa: BLE001 - e.g. broken Tcl/Tk install
+        _log(f"Could not open the control window: {exc!r}")
         return False
     root.title(APP_NAME)
     root.resizable(False, False)
@@ -456,14 +462,14 @@ def control_window(url: str, *, open_browser: Any = None, tk_module: Any = None,
         pass
     frame = tk.Frame(root, padx=24, pady=18)
     frame.pack()
-    tk.Label(frame, text=f"{APP_NAME} se está ejecutando en el navegador",
+    tk.Label(frame, text=t("desktop.running_in_browser", app=APP_NAME),
              font=("Segoe UI", 11, "bold")).pack(pady=(0, 4))
     tk.Label(frame, text=url, fg="#6b6894").pack(pady=(0, 14))
     buttons = tk.Frame(frame)
     buttons.pack()
-    tk.Button(buttons, text="Abrir navegador", width=18,
+    tk.Button(buttons, text=t("desktop.open_browser"), width=18,
               command=lambda: open_browser(url)).pack(side="left", padx=6)
-    tk.Button(buttons, text=f"Cerrar {APP_NAME}", width=22,
+    tk.Button(buttons, text=t("desktop.close_app", app=APP_NAME), width=22,
               command=root.destroy).pack(side="left", padx=6)
     root.protocol("WM_DELETE_WINDOW", root.destroy)
     if on_ready is not None:
@@ -473,21 +479,21 @@ def control_window(url: str, *, open_browser: Any = None, tk_module: Any = None,
 
 
 def run_browser(port: int = 0, voices_dir: str | None = None, reason: str | None = None) -> int:
-    """Alternativa sin ventana nativa: servidor + navegador por defecto.
+    """Fallback without a native window: server + default browser.
 
-    Con consola se sale con Ctrl+C. Sin consola (pythonw) se muestra :func:`control_window`;
-    al cerrarla se para el servidor (y, al volver, se libera el mutex de instancia única).
+    With a console, quit with Ctrl+C. Without one (pythonw) :func:`control_window` is shown;
+    closing it stops the server (and, on return, the single-instance mutex is released).
     """
     if reason:
-        notify(f"{reason}\n\nSe abrirá {APP_NAME} en el navegador.", error=False)
+        notify(t("desktop.opening_in_browser", reason=reason, app=APP_NAME), error=False)
     server = Server(port=port, voices_dir=voices_dir)
     try:
         url = server.start()
         webbrowser.open(url)
         if not _has_console() and control_window(url):
-            _log("Ventana de control cerrada: parando el servidor.")
+            _log("Control window closed: stopping the server.")
         else:
-            _log(f"UI en {url} (Ctrl+C para salir)")
+            _log(f"UI at {url} (Ctrl+C to quit)")
             server.app.block_thread()
     except KeyboardInterrupt:
         pass
@@ -498,24 +504,22 @@ def run_browser(port: int = 0, voices_dir: str | None = None, reason: str | None
 
 def run_desktop(port: int = 0, voices_dir: str | None = None, debug: bool = False,
                 force_browser: bool = False) -> int:
-    """Abre la app de escritorio. Devuelve el código de salida."""
+    """Open the desktop app. Returns the exit code."""
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     set_app_user_model_id()
 
     instance = SingleInstance()
     if not instance.acquire():
         return handle_second_instance()
-    _setup_stdio()  # después del mutex: una segunda instancia no toca el log de la primera
+    _setup_stdio()  # after the mutex: a second instance does not touch the first one's log
     try:
         if force_browser:
             return run_browser(port, voices_dir)
         try:
             import webview  # type: ignore[import-not-found]
-        except Exception as exc:  # noqa: BLE001 - ImportError o fallo de pythonnet/.NET
-            return run_browser(port, voices_dir, reason=(
-                "No está disponible la ventana de escritorio (pywebview): "
-                f"{exc.__class__.__name__}: {exc}.\n"
-                "Instálala con: uv sync --extra desktop (o vuelve a ejecutar bats\\install.bat)."))
+        except Exception as exc:  # noqa: BLE001 - ImportError or pythonnet/.NET failure
+            return run_browser(port, voices_dir, reason=t(
+                "desktop.no_pywebview", exc=f"{exc.__class__.__name__}: {exc}"))
         return _run_webview(webview, port, voices_dir, debug)
     finally:
         instance.release()
@@ -528,9 +532,9 @@ def _run_webview(webview: Any, port: int, voices_dir: str | None, debug: bool) -
              "minimized": False, "error": None}
 
     try:
-        webview.settings["ALLOW_DOWNLOADS"] = True  # "Guardar como" para los audios
+        webview.settings["ALLOW_DOWNLOADS"] = True  # "Save as" for the audio files
         webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
-    except Exception:  # noqa: BLE001 - versiones antiguas de pywebview
+    except Exception:  # noqa: BLE001 - old pywebview versions
         pass
 
     window = webview.create_window(
@@ -542,7 +546,7 @@ def _run_webview(webview: Any, port: int, voices_dir: str | None, debug: bool) -
     def on_initialized(renderer: str) -> bool:
         flags["renderer"] = renderer
         if renderer != "edgechromium":
-            return False  # MSHTML (Internet Explorer) no puede con Gradio: mejor el navegador
+            return False  # MSHTML (Internet Explorer) cannot run Gradio: better use the browser
         return True
 
     def on_maximized() -> None:
@@ -579,14 +583,14 @@ def _run_webview(webview: Any, port: int, voices_dir: str | None, debug: bool) -
             url = server.start()
         except Exception as exc:  # noqa: BLE001
             flags["error"] = exc
-            _log("Error arrancando el servidor:\n" + "".join(traceback.format_exception(exc)))
+            _log("Error starting the server:\n" + "".join(traceback.format_exception(exc)))
             if not flags["closed"]:
                 window.load_html(error_html(exc))
             return
         if flags["closed"]:
             server.stop()
             return
-        _log(f"Servidor listo en {url}")
+        _log(f"Server ready at {url}")
         window.load_url(url)
 
     storage = state_dir() / "webview"
@@ -594,26 +598,23 @@ def _run_webview(webview: Any, port: int, voices_dir: str | None, debug: bool) -
         webview.start(boot, gui="edgechromium", debug=debug, private_mode=False,
                       storage_path=str(storage),
                       icon=str(ICON_ICO) if ICON_ICO.is_file() else None)
-    except Exception as exc:  # noqa: BLE001 - p.ej. WebView2 roto o .NET ausente
+    except Exception as exc:  # noqa: BLE001 - e.g. broken WebView2 or missing .NET
         flags["closed"] = True
-        _log("Fallo de la ventana nativa:\n" + "".join(traceback.format_exception(exc)))
+        _log("Native window failure:\n" + "".join(traceback.format_exception(exc)))
         server.stop()
-        return run_browser(port, voices_dir, reason=(
-            f"No se pudo abrir la ventana de escritorio (WebView2): {exc}"))
+        return run_browser(port, voices_dir, reason=t("desktop.webview_failed", exc=exc))
     flags["closed"] = True
 
     if flags["renderer"] not in (None, "edgechromium"):
         server.stop()
-        return run_browser(port, voices_dir, reason=(
-            "Falta Microsoft Edge WebView2 Runtime (viene con Windows 10/11 actualizados; "
-            "se descarga en https://developer.microsoft.com/microsoft-edge/webview2/)."))
+        return run_browser(port, voices_dir, reason=t("desktop.no_webview2"))
 
-    _log("Ventana cerrada: parando el servidor.")
+    _log("Window closed: stopping the server.")
     server.stop()
-    _log("Servidor parado.")
-    # El servidor ya está cerrado y los ficheros guardados; el desmontaje de .NET/WebView2 al
-    # salir del intérprete puede tardar varios segundos con el proceso aún vivo (y la mutex de
-    # instancia única tomada), así que se sale ya.
+    _log("Server stopped.")
+    # The server is closed and the files are saved; tearing down .NET/WebView2 when the
+    # interpreter exits can take several seconds with the process still alive (and the
+    # single-instance mutex taken), so exit right away.
     _exit_now(0)
     return 0
 
@@ -629,14 +630,14 @@ def _exit_now(code: int) -> None:
 
 def build_arg_parser(parser: argparse.ArgumentParser | None = None) -> argparse.ArgumentParser:
     p = parser or argparse.ArgumentParser(prog="podcast_tts desktop",
-                                          description="Abre la app de escritorio.")
+                                          description=t("desktop.h_description"))
     p.add_argument("--port", type=int, default=0,
-                   help="puerto del servidor interno (por defecto, uno libre)")
+                   help=t("desktop.h_port"))
     p.add_argument("--browser", action="store_true",
-                   help="no abre ventana nativa: usa el navegador (como si faltara pywebview)")
-    p.add_argument("--debug", action="store_true", help="abre las herramientas de desarrollo")
+                   help=t("desktop.h_browser"))
+    p.add_argument("--debug", action="store_true", help=t("desktop.h_debug"))
     if parser is None:
-        p.add_argument("--voices-dir", default=None, help="directorio de voces")
+        p.add_argument("--voices-dir", default=None, help=t("common.voices_dir_short"))
     return p
 
 

@@ -1,4 +1,4 @@
-"""Tests de la app de escritorio (sin abrir ventanas) y de los añadidos de la UI."""
+"""Tests of the desktop app (without opening windows) and of the UI additions."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def test_window_state_roundtrip_and_sanitize(_state_dir: Path) -> None:
     desktop.save_window_state({"width": 1000, "height": 700, "x": 10, "y": 20, "maximized": True})
     assert desktop.load_window_state() == {"width": 1000, "height": 700, "x": 10, "y": 20,
                                            "maximized": True}
-    # valores absurdos (ventana minimizada, tamaños diminutos, basura) -> por defecto
+    # absurd values (minimized window, tiny sizes, garbage) -> defaults
     (_state_dir / "window.json").write_text(json.dumps(
         {"width": 50, "height": "x", "x": -32000, "y": -32000}), encoding="utf-8")
     st = desktop.load_window_state()
@@ -60,11 +60,11 @@ def test_falls_back_to_browser_without_pywebview(monkeypatch: pytest.MonkeyPatch
 def test_second_instance_does_not_start_server(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(desktop, "SingleInstance", _BusyInstance)
     monkeypatch.setattr(desktop, "focus_window", lambda title=desktop.WINDOW_TITLE: True)
-    monkeypatch.setattr(desktop, "Server", None)  # si se intentara arrancar, fallaría
+    monkeypatch.setattr(desktop, "Server", None)  # it would fail if anything tried to start it
     assert desktop.run_desktop() == 0
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="mutex con nombre de Windows")
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows named mutex")
 def test_single_instance_mutex() -> None:
     name = f"Local\\podcast-tts-test-{id(object())}"
     a, b = desktop.SingleInstance(name), desktop.SingleInstance(name)
@@ -102,18 +102,18 @@ def test_ui_header_and_open_output_folder(tmp_path: Path) -> None:
     assert opened == [str(cfg.output_dir)] and cfg.output_dir.is_dir() and "📂" in msg
 
     def boom(_: str) -> None:
-        raise OSError("sin explorador")
+        raise OSError("no file manager")
 
     assert "❌" in ui.open_output_folder(cfg, opener=boom)
 
 
 # --------------------------------------------------------------------------- #
-# Regresiones de la revisión de código
+# Code review regressions
 # --------------------------------------------------------------------------- #
 
 
 def test_mutex_name_depends_on_install_folder(tmp_path: Path) -> None:
-    a, b = tmp_path / "uno", tmp_path / "dos"
+    a, b = tmp_path / "one", tmp_path / "two"
     a.mkdir()
     b.mkdir()
     assert desktop.mutex_name(a) != desktop.mutex_name(b)
@@ -124,34 +124,34 @@ def test_mutex_name_depends_on_install_folder(tmp_path: Path) -> None:
 def test_second_instance_does_not_touch_log(monkeypatch, _state_dir: Path) -> None:
     _state_dir.mkdir(parents=True, exist_ok=True)
     log = _state_dir / "desktop.log"
-    log.write_text("log de la primera instancia\n", encoding="utf-8")
+    log.write_text("log of the first instance\n", encoding="utf-8")
     monkeypatch.setattr(sys, "stdout", None)
     monkeypatch.setattr(sys, "stderr", None)
     monkeypatch.setattr(desktop, "SingleInstance", _BusyInstance)
     monkeypatch.setattr(desktop, "focus_window", lambda title=desktop.WINDOW_TITLE: True)
     assert desktop.run_desktop() == 0
-    assert log.read_text(encoding="utf-8") == "log de la primera instancia\n"
+    assert log.read_text(encoding="utf-8") == "log of the first instance\n"
 
 
 def test_setup_stdio_appends_and_rotates(monkeypatch, _state_dir: Path) -> None:
     _state_dir.mkdir(parents=True, exist_ok=True)
     log = _state_dir / "desktop.log"
-    log.write_text("anterior\n", encoding="utf-8")
+    log.write_text("previous\n", encoding="utf-8")
     monkeypatch.setattr(sys, "stdout", None)
     monkeypatch.setattr(sys, "stderr", None)
     desktop._setup_stdio()
-    print("nuevo", file=sys.stderr, flush=True)
+    print("new", file=sys.stderr, flush=True)
     sys.stderr.close()
-    assert log.read_text(encoding="utf-8").startswith("anterior\n")
-    assert "nuevo" in log.read_text(encoding="utf-8")
-    # Rotación: si pasa del tamaño máximo se renombra a desktop.log.1
+    assert log.read_text(encoding="utf-8").startswith("previous\n")
+    assert "new" in log.read_text(encoding="utf-8")
+    # Rotation: above the maximum size it is renamed to desktop.log.1
     monkeypatch.setattr(desktop, "LOG_MAX_BYTES", 10)
     monkeypatch.setattr(sys, "stdout", None)
     monkeypatch.setattr(sys, "stderr", None)
     desktop._setup_stdio()
     sys.stderr.close()
-    assert "nuevo" in (_state_dir / "desktop.log.1").read_text(encoding="utf-8")
-    assert "anterior" not in log.read_text(encoding="utf-8")
+    assert "new" in (_state_dir / "desktop.log.1").read_text(encoding="utf-8")
+    assert "previous" not in log.read_text(encoding="utf-8")
 
 
 class _FakeWidget:
@@ -200,16 +200,16 @@ def test_control_window_buttons() -> None:
 
     def on_ready(root) -> None:
         buttons = {w.kw["text"]: w.kw["command"] for w in _FakeTk.widgets if "command" in w.kw}
-        buttons["Abrir navegador"]()
+        buttons["Open browser"]()
         assert not root.destroyed
-        buttons["Cerrar AudioGeneration"]()
+        buttons["Close AudioGeneration"]()
         assert root.destroyed
 
     assert desktop.control_window("http://127.0.0.1:1/", open_browser=opened.append,
                                   tk_module=_FakeTkModule, on_ready=on_ready) is True
     assert opened == ["http://127.0.0.1:1/"]
     texts = [w.kw.get("text", "") for w in _FakeTk.widgets]
-    assert "AudioGeneration se está ejecutando en el navegador" in texts
+    assert "AudioGeneration is running in the browser" in texts
 
 
 def test_run_browser_without_console_stops_server_when_window_closes(monkeypatch) -> None:
