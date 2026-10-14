@@ -3,3 +3,7 @@
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
 *.sh  text eol=lf
+
+# Fuera del zip de release (git archive)
+.claude/ export-ignore
+CLAUDE.md export-ignore

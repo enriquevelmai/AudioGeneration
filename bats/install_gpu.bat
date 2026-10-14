@@ -58,6 +58,8 @@ for %%e in (!EXTRAS!) do (
 echo !NEW_EXTRAS! | findstr /i /c:"local" >nul
 if errorlevel 1 set "NEW_EXTRAS=local!NEW_EXTRAS!"
 set "NEW_EXTRAS=!NEW_EXTRAS! cuda"
+echo !NEW_EXTRAS! | findstr /i /c:"desktop" >nul
+if errorlevel 1 set "NEW_EXTRAS=!NEW_EXTRAS! desktop"
 for /f "tokens=*" %%x in ("!NEW_EXTRAS!") do set "NEW_EXTRAS=%%x"
 set "EXTRA_ARGS="
 for %%e in (!NEW_EXTRAS!) do set "EXTRA_ARGS=!EXTRA_ARGS! --extra %%e"
@@ -78,7 +80,7 @@ if errorlevel 1 (
     goto fail
 )
 echo.
-echo  Listo: los motores usaran la GPU. Abre la interfaz con bats\run.bat
+echo  Listo: los motores usaran la GPU. Abre la app con bats\run.bat
 if not "%NONINTERACTIVE%"=="1" pause
 endlocal
 exit /b 0
