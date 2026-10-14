@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "podcast-tts"
-version = "0.1.0"
+version = "1.0.0"
 description = "Generador local de podcasts a partir de guiones Markdown con F5-TTS y XTTS v2"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -37,6 +37,8 @@ local = [
 # Variante de torch: mutuamente excluyentes (ver [tool.uv] conflicts y [tool.uv.sources]).
 cuda = ["torch==2.8.*", "torchaudio==2.8.*"]
 cpu = ["torch==2.8.*", "torchaudio==2.8.*"]
+# App de escritorio (`podcast-tts desktop`): ventana nativa con WebView2 en lugar del navegador.
+desktop = ["pywebview>=5"]
 dev = ["pytest"]
 
 [project.scripts]
