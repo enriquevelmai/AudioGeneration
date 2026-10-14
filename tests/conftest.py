@@ -1,7 +1,8 @@
-"""Configuración común de pytest."""
+"""Shared pytest configuration."""
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -13,12 +14,26 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-requires_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg no está en el PATH")
+# Tests assert English texts: never pick up the developer's saved language (.env) or shell.
+os.environ["PODCAST_TTS_LANG"] = "en"
+
+requires_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is not on PATH")
+
+
+@pytest.fixture(autouse=True)
+def _english_ui(monkeypatch: pytest.MonkeyPatch):
+    """Every test starts in English with a fresh language cache."""
+    from podcast_tts import i18n
+
+    monkeypatch.setenv("PODCAST_TTS_LANG", "en")
+    i18n.reset_language()
+    yield
+    i18n.reset_language()
 
 
 def write_tone(path: Path, seconds: float, sr: int = 44100, freq: float = 220.0,
                channels: int = 2) -> Path:
-    """Escribe un WAV 16 bit con un tono (para tests)."""
+    """Write a 16-bit WAV with a tone (for tests)."""
     from pydub import AudioSegment
 
     t = np.arange(int(seconds * sr)) / sr

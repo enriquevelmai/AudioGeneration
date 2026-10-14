@@ -1,4 +1,4 @@
-"""Motores en la nube con ``urllib.request.urlopen`` simulado (sin red ni claves reales)."""
+"""Cloud engines with a mocked ``urllib.request.urlopen`` (no network, no real keys)."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ EXPECTED = np.array([0.0, 0.5, -0.5, 32767 / 32768, -1.0], dtype=np.float32)
 
 @pytest.fixture(autouse=True)
 def isolated_env(tmp_path, monkeypatch):
-    """Sin claves del entorno real y con un .env vacío en tmp_path."""
+    """No keys from the real environment and an empty .env in tmp_path."""
     for k in ("ELEVENLABS_API_KEY", "AZURE_SPEECH_KEY", "AZURE_SPEECH_REGION", "OPENAI_API_KEY"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("PODCAST_TTS_ENV_FILE", str(tmp_path / ".env"))
@@ -48,7 +48,7 @@ class FakeResponse:
 
 
 class FakeUrlopen:
-    """Sustituye a ``urllib.request.urlopen``: registra las peticiones y devuelve respuestas."""
+    """Replaces ``urllib.request.urlopen``: records the requests and returns responses."""
 
     def __init__(self, *responses) -> None:
         self.responses = list(responses) or [PCM]
@@ -95,7 +95,7 @@ def test_pcm16_to_float32() -> None:
     out = pcm16_to_float32(PCM)
     assert out.dtype == np.float32
     np.testing.assert_allclose(out, EXPECTED)
-    assert pcm16_to_float32(PCM + b"\x01").size == 5  # byte suelto descartado
+    assert pcm16_to_float32(PCM + b"\x01").size == 5  # stray byte dropped
     assert pcm16_to_float32(b"").size == 0
 
 
@@ -117,7 +117,7 @@ def test_elevenlabs_request(fake, tmp_path) -> None:
     assert body["text"] == "Hola, ¿qué tal?"
     assert body["model_id"] == "eleven_multilingual_v2"
     assert body["voice_settings"] == {"stability": 0.4, "speed": 1.1}
-    assert "language_code" not in body  # multilingual_v2 no lo admite
+    assert "language_code" not in body  # multilingual_v2 does not support it
     assert fake.timeouts[-1] == 60.0
 
 
@@ -128,7 +128,7 @@ def test_elevenlabs_language_code_and_speed_clamp(fake, tmp_path) -> None:
     assert body["language_code"] == "en"
     assert body["voice_settings"]["speed"] == 1.2
     assert "/text-to-speech/id%2Fx?" in fake.last.full_url
-    # speed 1.0 -> sin voice_settings
+    # speed 1.0 -> no voice_settings
     eng.synthesize("Hello", cloud_voice(tmp_path, "id", "elevenlabs"), "en", speed=1.0)
     assert "voice_settings" not in json.loads(fake.last.data)
 
@@ -162,7 +162,7 @@ def test_azure_request(fake, tmp_path, monkeypatch) -> None:
     assert fake.header("Content-Type") == "application/ssml+xml"
     assert fake.header("X-Microsoft-OutputFormat") == "raw-24khz-16bit-mono-pcm"
     ssml = req.data.decode("utf-8")
-    doc = xml.dom.minidom.parseString(ssml)  # XML bien formado (texto escapado)
+    doc = xml.dom.minidom.parseString(ssml)  # well-formed XML (escaped text)
     speak = doc.documentElement
     assert speak.getAttribute("xml:lang") == "es-ES"
     assert speak.getElementsByTagName("voice")[0].getAttribute("name") == "es-ES-AlvaroNeural"
@@ -185,7 +185,7 @@ def test_azure_missing_region(fake, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("AZURE_SPEECH_KEY", FAKE_KEY)
     with pytest.raises(EngineError, match="AZURE_SPEECH_REGION"):
         AzureEngine().synthesize("Hola", cloud_voice(tmp_path, "es-ES-AlvaroNeural", "azure"), "es")
-    with pytest.raises(EngineError, match="región"):
+    with pytest.raises(EngineError, match="region"):
         AzureEngine(region="west europe/../x").synthesize(
             "Hola", cloud_voice(tmp_path, "es-ES-AlvaroNeural", "azure"), "es")
     assert fake.requests == []
@@ -197,7 +197,7 @@ def test_azure_missing_region(fake, tmp_path, monkeypatch) -> None:
 def test_openai_request(fake, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
     eng = OpenAIEngine()
-    voice = cloud_voice(tmp_path, "nova", "openai", instructions="Tono cálido")
+    voice = cloud_voice(tmp_path, "nova", "openai", instructions="Warm tone")
     audio = eng.synthesize("Hola", voice, "es", speed=1.5)
     np.testing.assert_allclose(audio, EXPECTED)
     req = fake.last
@@ -205,30 +205,30 @@ def test_openai_request(fake, tmp_path, monkeypatch) -> None:
     assert fake.header("Authorization") == f"Bearer {FAKE_KEY}"
     body = json.loads(req.data)
     assert body == {"model": "gpt-4o-mini-tts", "input": "Hola", "voice": "nova",
-                    "response_format": "pcm", "speed": 1.5, "instructions": "Tono cálido"}
+                    "response_format": "pcm", "speed": 1.5, "instructions": "Warm tone"}
     eng2 = OpenAIEngine(model="tts-1-hd")
     eng2.synthesize("Hola", cloud_voice(tmp_path, "alloy", "openai"), "es", speed=1.0)
     body = json.loads(fake.last.data)
     assert body["model"] == "tts-1-hd" and "speed" not in body
 
 
-# --------------------------------------------------------------------------- Errores
+# --------------------------------------------------------------------------- Errors
 
 
 @pytest.mark.parametrize("code, pattern", [
-    (401, "clave de API de OpenAI inválida"),
-    (403, "denegó el acceso"),
-    (404, "no encontrado"),
-    (400, "rechazó la petición"),
+    (401, "OpenAI API key is invalid"),
+    (403, "denied access"),
+    (404, "not found"),
+    (400, "rejected the request"),
 ])
-def test_http_errors_in_spanish_without_key(fake, tmp_path, code, pattern) -> None:
+def test_http_errors_are_clear_and_hide_key(fake, tmp_path, code, pattern) -> None:
     fake.responses = [http_error(code, {"error": {"message": f"bad key {FAKE_KEY}"}})]
     eng = OpenAIEngine(api_key=FAKE_KEY, retry_backoff=0)
     with pytest.raises(EngineError, match=pattern) as exc_info:
         eng.synthesize("Hola", cloud_voice(tmp_path, "nova", "openai"), "es")
     assert FAKE_KEY not in str(exc_info.value)
     assert "bad key ****" in str(exc_info.value)
-    assert len(fake.requests) == 1  # 4xx (salvo 429) no se reintenta
+    assert len(fake.requests) == 1  # 4xx (except 429) is not retried
     assert FAKE_KEY not in repr(eng)
 
 
@@ -246,18 +246,18 @@ def test_quota_error_after_retries(fake, tmp_path) -> None:
     body = {"detail": {"status": "quota_exceeded", "message": "Quota exceeded"}}
     fake.responses = [http_error(429, body), http_error(429, body)]
     eng = ElevenLabsEngine(api_key=FAKE_KEY, max_retries=1, retry_backoff=0)
-    with pytest.raises(EngineError, match="cuota agotada.*Quota exceeded"):
+    with pytest.raises(EngineError, match="quota exceeded.*Quota exceeded"):
         eng.synthesize("Hola", cloud_voice(tmp_path, "abc", "elevenlabs"), "es")
     assert len(fake.requests) == 2
 
 
 def test_network_errors(fake, tmp_path) -> None:
-    fake.responses = [urllib.error.URLError("sin red")]
+    fake.responses = [urllib.error.URLError("no network")]
     eng = OpenAIEngine(api_key=FAKE_KEY, max_retries=0)
-    with pytest.raises(EngineError, match="no se pudo conectar con OpenAI"):
+    with pytest.raises(EngineError, match="could not connect to OpenAI"):
         eng.synthesize("Hola", cloud_voice(tmp_path, "nova", "openai"), "es")
     fake.responses = [TimeoutError()]
-    with pytest.raises(EngineError, match="tiempo de espera"):
+    with pytest.raises(EngineError, match="timed out"):
         eng.synthesize("Hola", cloud_voice(tmp_path, "nova", "openai"), "es")
 
 
@@ -267,7 +267,7 @@ def test_missing_provider_voice_id_and_empty(fake, tmp_path) -> None:
         eng.synthesize("Hola", Voice("ana", tmp_path), "es")
     assert eng.synthesize("   ", Voice("ana", tmp_path), "es").size == 0
     fake.responses = [b""]
-    with pytest.raises(EngineError, match="vacío"):
+    with pytest.raises(EngineError, match="empty audio"):
         eng.synthesize("Hola", cloud_voice(tmp_path, "nova", "openai"), "es")
 
 
@@ -276,14 +276,14 @@ def test_registry_cloud_metadata(monkeypatch) -> None:
     for name in ("elevenlabs", "azure", "openai"):
         assert info[name]["kind"] == "cloud"
         assert info[name]["configured"] is False
-        assert info[name]["commercial_use"] in (True, "depende del plan")
+        assert info[name]["commercial_use"] in (True, "depends on plan")
     monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
     assert engine_info(check_cuda=False)["openai"]["configured"] is True
     assert get_engine("openai").sample_rate == 24000
 
 
 def test_assembler_with_cloud_voice(fake, tmp_path, monkeypatch) -> None:
-    """Una frase con voz cloud pasa por la caché y el remuestreo del assembler."""
+    """A sentence with a cloud voice goes through the assembler's cache and resampling."""
     from podcast_tts.assembler import AssembleOptions, synthesize_speech
     from podcast_tts.script_parser import Speech
     from podcast_tts.voices import add_voice
@@ -295,4 +295,4 @@ def test_assembler_with_cloud_voice(fake, tmp_path, monkeypatch) -> None:
                                   options=opts)
     assert sr == 24000 and audio.size == 5
     synthesize_speech(Speech(voice="nova", text="Hola"), voices_dir=tmp_path / "v", options=opts)
-    assert len(fake.requests) == 1  # la segunda vez sale de la caché
+    assert len(fake.requests) == 1  # the second time it comes from the cache

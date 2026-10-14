@@ -1,4 +1,4 @@
-"""Tests del registro de voces."""
+"""Tests for the voice registry."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from podcast_tts.voices import (
 def test_add_get_list_remove(tmp_path, tone_factory) -> None:
     src = tone_factory("largo.wav", 20.0, sr=44100, channels=2)
     voices_dir = tmp_path / "voices"
-    with pytest.warns(UserWarning, match="recortado"):
+    with pytest.warns(UserWarning, match="trimmed"):
         voice = add_voice("ana", src, "Hola, soy Ana.", lang="es", engine="f5",
                           description="Voz de prueba", speed=1.05, voices_dir=voices_dir)
 
@@ -42,7 +42,7 @@ def test_add_get_list_remove(tmp_path, tone_factory) -> None:
     assert loaded.speed == 1.05 and loaded.engine == "f5" and loaded.has_ref
     assert [v.name for v in list_voices(voices_dir)] == ["ana"]
 
-    with pytest.raises(VoiceError, match="ya existe"):
+    with pytest.raises(VoiceError, match="already exists"):
         add_voice("ana", src, "x", voices_dir=voices_dir)
 
     remove_voice("ana", voices_dir)
@@ -56,7 +56,7 @@ def test_short_clip_warns_and_overwrite(tmp_path, tone_factory) -> None:
     voices_dir = tmp_path / "voices"
     add_voice("carlos", tone_factory("a.wav", 6.0, channels=1), "Hola.", lang="es",
               voices_dir=voices_dir)
-    with pytest.warns(UserWarning, match="solo"):
+    with pytest.warns(UserWarning, match="only"):
         v = add_voice("carlos", tone_factory("b.wav", 1.0), "Hi.", lang="en", engine="xtts",
                       voices_dir=voices_dir, overwrite=True)
     assert get_voice("carlos", voices_dir).lang == "en"
@@ -71,19 +71,19 @@ def test_xtts_speaker_without_wav(tmp_path) -> None:
 
 
 def test_invalid_inputs(tmp_path) -> None:
-    with pytest.raises(VoiceError, match="inválido"):
+    with pytest.raises(VoiceError, match="invalid"):
         add_voice("con espacio", None, xtts_speaker="x", voices_dir=tmp_path)
-    with pytest.raises(VoiceError, match="motor"):
+    with pytest.raises(VoiceError, match="engine"):
         add_voice("ok", None, xtts_speaker="x", engine="otro", voices_dir=tmp_path)
-    with pytest.raises(VoiceError, match="referencia"):
+    with pytest.raises(VoiceError, match="reference"):
         add_voice("ok", None, voices_dir=tmp_path)
-    with pytest.raises(VoiceError, match="no existe"):
+    with pytest.raises(VoiceError, match="does not exist"):
         add_voice("ok", tmp_path / "nada.wav", "x", voices_dir=tmp_path)
     assert list_voices(tmp_path / "no_existe") == []
 
 
 # --------------------------------------------------------------------------- #
-# Regresiones de la revisión de código
+# Regressions from the code review
 # --------------------------------------------------------------------------- #
 
 
@@ -127,7 +127,7 @@ def test_get_voice_rejects_path_traversal(tmp_path, name: str) -> None:
 
 @pytest.mark.parametrize("name", ["CON", "con", "Prn", "aux", "NUL", "COM1", "com9", "LPT1", "lpt9"])
 def test_reserved_windows_names_rejected(tmp_path, name: str) -> None:
-    with pytest.raises(VoiceError, match="reservado"):
+    with pytest.raises(VoiceError, match="reserved"):
         add_voice(name, None, xtts_speaker="Ana Florence", engine="xtts", voices_dir=tmp_path)
     with pytest.raises(VoiceError):
         remove_voice(name, voices_dir=tmp_path)

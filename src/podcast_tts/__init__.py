@@ -1,12 +1,12 @@
-"""podcast_tts: genera podcasts desde guiones Markdown con voces clonadas en local."""
+"""podcast_tts: generate podcasts from Markdown scripts with locally cloned voices."""
 
 def _read_version() -> str:
-    """Versión instalada (metadatos del paquete); fallback si se ejecuta desde src/ sin instalar."""
+    """Installed version (package metadata); fallback when running from src/ without installing."""
     try:
         from importlib.metadata import PackageNotFoundError, version
 
         return version("podcast-tts")
-    except (ImportError, PackageNotFoundError):  # pragma: no cover - depende de la instalación
+    except (ImportError, PackageNotFoundError):  # pragma: no cover - depends on the installation
         return "1.0.0"
 
 

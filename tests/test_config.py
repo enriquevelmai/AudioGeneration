@@ -1,4 +1,4 @@
-"""Configuración de claves (.env en tmp_path, sin tocar el .env real)."""
+"""Key configuration (.env in tmp_path, without touching the real .env)."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def test_set_get_delete(env_file) -> None:
     config.set_key("OPENAI_API_KEY", "sk-abc123456789xyz")
     config.set_key("AZURE_SPEECH_REGION", "westeurope")
     assert config.get_key("OPENAI_API_KEY") == "sk-abc123456789xyz"
-    # Sustituye sin duplicar
+    # Replaces without duplicating
     config.set_key("OPENAI_API_KEY", "sk-new-value-0000wxyz")
     text = env_file.read_text(encoding="utf-8")
     assert text.count("OPENAI_API_KEY=") == 1 and "sk-new-value-0000wxyz" in text
@@ -49,8 +49,8 @@ def test_env_var_has_priority(env_file, monkeypatch) -> None:
     monkeypatch.setenv("ELEVENLABS_API_KEY", "from-env-987654321")
     assert config.get_key("ELEVENLABS_API_KEY") == "from-env-987654321"
     st = {s.name: s for s in config.key_status()}
-    assert st["ELEVENLABS_API_KEY"].source == "entorno"
-    monkeypatch.setenv("ELEVENLABS_API_KEY", "  ")  # vacía -> se ignora
+    assert st["ELEVENLABS_API_KEY"].source == "env"
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "  ")  # empty -> ignored
     assert config.get_key("ELEVENLABS_API_KEY") == "from-file-123456789"
 
 
@@ -93,7 +93,7 @@ def test_mask_and_status(env_file) -> None:
     config.set_key("AZURE_SPEECH_REGION", "westeurope")
     st = {s.name: s for s in config.key_status()}
     assert st["OPENAI_API_KEY"].masked == "sk-...abcd" and st["OPENAI_API_KEY"].source == ".env"
-    assert st["AZURE_SPEECH_REGION"].masked == "westeurope"  # no es secreta
+    assert st["AZURE_SPEECH_REGION"].masked == "westeurope"  # not a secret
     assert not st["ELEVENLABS_API_KEY"].is_set and st["ELEVENLABS_API_KEY"].masked == ""
     assert "1234567890" not in repr(st)
 
@@ -116,5 +116,5 @@ def test_quoted_value_with_trailing_comment(tmp_path) -> None:
     assert data["C"] == "con # dentro"
     assert data["D"] == 'esc " comilla'
     assert data["E"] == "sin_comillas"
-    assert data["F"] == '"abc"def'  # no es un valor entrecomillado: se deja tal cual
+    assert data["F"] == '"abc"def'  # not a quoted value: kept as is
     assert data["G"] == '"sin cerrar'

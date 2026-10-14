@@ -1,4 +1,4 @@
-"""Avisos de licencia: qué motores usa un guion y si alguno es de uso no comercial."""
+"""License notices: which engines a script uses and whether any of them is non-commercial."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .engines import EngineError, LicenseInfo, engine_license
+from .i18n import t
 from .script_parser import ParsedScript, Speech
 
 __all__ = ["engines_in_script", "license_notice", "noncommercial_engines"]
@@ -15,9 +16,9 @@ COMMERCIAL_DOC = "docs/COMMERCIAL_USE.md"
 
 def engines_in_script(script: ParsedScript, voices_dir: str | Path | None = None,
                       engine_override: str | None = None) -> list[str]:
-    """Motores que usará cada frase del guion (en orden de aparición, sin repetir).
+    """Engines each sentence of the script will use (in order of appearance, without repeats).
 
-    Las frases cuya voz no existe se ignoran (ese error se notifica al generar).
+    Sentences whose voice does not exist are skipped (that error is reported when generating).
     """
     from .assembler import AssembleError, AssembleOptions, resolve_speech
 
@@ -37,7 +38,7 @@ def engines_in_script(script: ParsedScript, voices_dir: str | Path | None = None
 
 
 def noncommercial_engines(names: Iterable[str]) -> list[tuple[str, LicenseInfo]]:
-    """Los motores de ``names`` cuya licencia prohíbe el uso comercial."""
+    """The engines in ``names`` whose license forbids commercial use."""
     result = []
     for name in dict.fromkeys(names):
         try:
@@ -50,7 +51,8 @@ def noncommercial_engines(names: Iterable[str]) -> list[tuple[str, LicenseInfo]]
 
 
 def license_notice(names: Iterable[str], *, markdown: bool = False) -> str | None:
-    """Aviso breve si algún motor de ``names`` es no comercial; ``None`` si no hay nada que avisar."""
+    """Short notice if any engine in ``names`` is non-commercial; ``None`` if there is nothing
+    to report. Translated to the active UI language (see :mod:`podcast_tts.i18n`)."""
     bad = noncommercial_engines(names)
     if not bad:
         return None
@@ -58,10 +60,5 @@ def license_notice(names: Iterable[str], *, markdown: bool = False) -> str | Non
         items = ", ".join(f"`{n}` ({lic.name})" for n, lic in bad)
     else:
         items = ", ".join(f"'{n}' ({lic.name})" for n, lic in bad)
-    plural = len(bad) > 1
-    return (
-        f"Aviso de licencia: {'los motores' if plural else 'el motor'} {items} "
-        f"{'son' if plural else 'es'} solo para uso NO comercial. Para uso comercial usa un "
-        f"motor con licencia comercial (p.ej. elevenlabs, azure u openai con plan de pago); "
-        f"ver {COMMERCIAL_DOC}."
-    )
+    key = "license.notice_many" if len(bad) > 1 else "license.notice_one"
+    return t(key, items=items, doc=COMMERCIAL_DOC)

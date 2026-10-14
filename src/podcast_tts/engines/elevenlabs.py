@@ -1,14 +1,14 @@
-"""Motor ElevenLabs (API REST de pago; solo stdlib).
+"""ElevenLabs engine (paid REST API; stdlib only).
 
 ``POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format=pcm_24000``
-con la cabecera ``xi-api-key``. Devuelve PCM 16 bit mono a 24 kHz.
+with the ``xi-api-key`` header. Returns 16-bit mono PCM at 24 kHz.
 
-Voz: ``provider_voice_id`` = ID de la voz de ElevenLabs (p.ej. ``21m00Tcm4TlvDq8ikWAM``).
-``provider_options`` admite ``model_id``, ``voice_settings`` (``stability``,
+Voice: ``provider_voice_id`` = ElevenLabs voice ID (e.g. ``21m00Tcm4TlvDq8ikWAM``).
+``provider_options`` accepts ``model_id``, ``voice_settings`` (``stability``,
 ``similarity_boost``, ``style``, ``use_speaker_boost``, ``speed``), ``language_code``
-(si no, se envía el idioma solo a los modelos que lo admiten) y ``seed``.
+(otherwise the language is only sent to the models that support it) and ``seed``.
 
-Clave: ``ELEVENLABS_API_KEY`` (entorno o ``.env``).
+Key: ``ELEVENLABS_API_KEY`` (environment or ``.env``).
 """
 
 from __future__ import annotations
@@ -34,18 +34,18 @@ API_URL = "https://api.elevenlabs.io"
 DEFAULT_MODEL = "eleven_multilingual_v2"
 OUTPUT_FORMAT = "pcm_24000"
 SPEED_RANGE = (0.7, 1.2)
-# Modelos que aceptan ``language_code`` (con otros la API devuelve error).
-# Para otros modelos se puede forzar con ``provider_options.language_code``.
+# Models that accept ``language_code`` (with others the API returns an error).
+# For other models it can be forced with ``provider_options.language_code``.
 LANGUAGE_CODE_MODELS = frozenset({"eleven_turbo_v2_5", "eleven_flash_v2_5"})
 
 
 class ElevenLabsEngine(CloudEngine):
-    """Motor ElevenLabs.
+    """ElevenLabs engine.
 
-    Parámetros (además de los de :class:`CloudEngine`):
-        model_id: modelo por defecto (``eleven_multilingual_v2``).
-        voice_settings: ajustes por defecto (se combinan con los de la voz).
-        base_url: URL base de la API.
+    Parameters (in addition to those of :class:`CloudEngine`):
+        model_id: default model (``eleven_multilingual_v2``).
+        voice_settings: default settings (merged with the voice's own).
+        base_url: base URL of the API.
     """
 
     name = "elevenlabs"
@@ -53,12 +53,12 @@ class ElevenLabsEngine(CloudEngine):
     key_env = "ELEVENLABS_API_KEY"
     required_config = ("ELEVENLABS_API_KEY",)
     license_info = LicenseInfo(
-        name="Términos de servicio de ElevenLabs",
+        name="ElevenLabs Terms of Service",
         url="https://elevenlabs.io/terms-of-use",
         commercial_use=COMMERCIAL_DEPENDS,
-        notes="Uso comercial permitido con un plan de pago (el plan gratuito es no comercial y "
-              "exige atribución). Sujeto a sus términos y a su política de uso; clonar una voz "
-              "requiere el consentimiento de su titular.",
+        notes="Commercial use allowed with a paid plan (the free plan is non-commercial and "
+              "requires attribution). Subject to their terms and usage policy; cloning a voice "
+              "requires the consent of its owner.",
     )
 
     def __init__(self, api_key: str | None = None, *, model_id: str = DEFAULT_MODEL,
@@ -76,7 +76,7 @@ class ElevenLabsEngine(CloudEngine):
 
     def build_request(self, text: str, voice: "Voice", lang: str, speed: float = 1.0
                       ) -> tuple[str, dict[str, Any]]:
-        """URL y cuerpo JSON de la petición (sin la clave)."""
+        """URL and JSON body of the request (without the key)."""
         opts = self._options(voice)
         voice_id = self._voice_id(voice)
         model = str(opts.get("model_id") or self.model_id)
@@ -86,7 +86,7 @@ class ElevenLabsEngine(CloudEngine):
             lo, hi = SPEED_RANGE
             clamped = min(max(speed, lo), hi)
             if clamped != speed:
-                log.warning("ElevenLabs admite speed entre %g y %g; se usa %g en vez de %g",
+                log.warning("ElevenLabs supports speed between %g and %g; using %g instead of %g",
                             lo, hi, clamped, speed)
             settings["speed"] = clamped
         body: dict[str, Any] = {"text": text, "model_id": model}

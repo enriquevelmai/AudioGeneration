@@ -1,4 +1,4 @@
-"""Tests del parser de guiones."""
+"""Tests of the script parser."""
 
 from __future__ import annotations
 
@@ -43,6 +43,27 @@ def test_voice_attributes_persist_until_next_voice() -> None:
     assert sp[0].text == "First line. Second line."
     assert (sp[0].lang, sp[0].speed, sp[0].engine) == ("en", 0.95, "xtts")
     assert (sp[1].lang, sp[1].speed, sp[1].engine) == (None, None, None)
+
+
+def test_english_tags_are_canonical() -> None:
+    english = parse_script(
+        "[title:Ep 1]\n[voice:ana lang=en] Hi. [pause:1.5]\n[music:bed.mp3 bg]\n"
+        "[voice:ana] More.\n[music:x.mp3 background vol=0.3]\n[music:stop]"
+    )
+    spanish = parse_script(
+        "[titulo:Ep 1]\n[voz:ana lang=en] Hi. [pausa:1.5]\n[musica:bed.mp3 fondo]\n"
+        "[voz:ana] More.\n[música:x.mp3 fondo vol=0.3]\n[musica:stop]"
+    )
+    assert english == spanish
+    assert english.meta.title == "Ep 1"
+    assert english.segments[2] == Music(path="bed.mp3", volume=0.15, fade=1.5, background=True,
+                                        line=3)
+    # The JSON output only uses the English segment names.
+    data = english.to_json()
+    for word in ('"speech"', '"pause"', '"music"', '"background": true'):
+        assert word in data
+    for word in ("voz", "pausa", "musica", "fondo"):
+        assert word not in data
 
 
 def test_all_tags_and_aliases() -> None:
@@ -102,7 +123,7 @@ def test_front_matter_fallback_without_yaml(monkeypatch: pytest.MonkeyPatch) -> 
 
     def fake_import(name, *args, **kwargs):
         if name == "yaml":
-            raise ImportError("sin yaml")
+            raise ImportError("no yaml")
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
@@ -113,7 +134,7 @@ def test_front_matter_fallback_without_yaml(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_unclosed_front_matter() -> None:
-    with pytest.raises(ScriptParseError, match="Línea 1"):
+    with pytest.raises(ScriptParseError, match="Line 1"):
         parse_script("---\ntitle: x\n[voz:a] hola")
 
 
@@ -128,7 +149,7 @@ def test_paragraph_pause_default_and_override() -> None:
     script = parse_script(text)
     assert [type(s).__name__ for s in script.segments] == ["Speech", "Pause", "Speech", "Pause", "Speech"]
     assert script.segments[1].seconds == 0.4
-    assert script.segments[3].seconds == 1.0  # la pausa explícita no se duplica
+    assert script.segments[3].seconds == 1.0  # the explicit pause is not duplicated
     script2 = parse_script(text, paragraph_pause=0)
     assert [type(s).__name__ for s in script2.segments] == ["Speech", "Speech", "Pause", "Speech"]
 
@@ -146,7 +167,7 @@ def test_chunking_respects_max_chars_and_sentences() -> None:
     chunks = chunk_text(text, max_chars=120)
     assert all(len(c) <= 120 for c in chunks)
     assert " ".join(chunks) == text
-    for c in chunks:  # cada trozo empieza y acaba en frase completa
+    for c in chunks:  # each chunk starts and ends with a full sentence
         assert c.startswith("Esta") and c.endswith(".")
 
 
@@ -170,23 +191,23 @@ def test_parser_produces_multiple_speech_chunks() -> None:
 @pytest.mark.parametrize(
     "text, line, fragment",
     [
-        ("[voz:ana] hola\n[foo:bar]", 2, "etiqueta desconocida"),
-        ("[voz:ana] hola\n\n[vos:carlos] x", 3, "etiqueta desconocida"),
-        ("[pausa:abc]", 1, "número"),
-        ("[pausa:-1]", 1, ">="),
-        ("[musica:a.mp3 vol=2]", 1, "<="),
-        ("[voz:ana engine=otro]", 1, "motor desconocido"),
-        ("[voz:ana color=rojo]", 1, "desconocido"),
-        ("[sfx:a.wav fondo]", 1, "desconocido"),
-        ("\n\nTexto sin voz", 3, "sin voz"),
-        ("[voz:]", 1, "necesita un valor"),
+        ("[voz:ana] hola\n[foo:bar]", 2, "unknown tag"),
+        ("[voice:ana] hi\n\n[vocie:carlos] x", 3, "unknown tag"),
+        ("[pausa:abc]", 1, "number"),
+        ("[pause:-1]", 1, ">="),
+        ("[music:a.mp3 vol=2]", 1, "<="),
+        ("[voz:ana engine=otro]", 1, "unknown engine"),
+        ("[voice:ana color=red]", 1, "unknown attribute"),
+        ("[sfx:a.wav bg]", 1, "unknown attribute"),
+        ("\n\nText without a voice", 3, "without an assigned voice"),
+        ("[voice:]", 1, "needs a value"),
     ],
 )
 def test_errors_include_line_number(text: str, line: int, fragment: str) -> None:
     with pytest.raises(ScriptParseError) as exc:
         parse_script(text)
     assert exc.value.line == line
-    assert f"Línea {line}" in str(exc.value)
+    assert f"Line {line}" in str(exc.value)
     assert fragment in str(exc.value)
 
 
@@ -210,7 +231,7 @@ def test_crlf_and_bom() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Regresiones de la revisión de código
+# Code review regressions
 # --------------------------------------------------------------------------- #
 
 
@@ -254,13 +275,13 @@ def test_multiline_html_comment_not_synthesized() -> None:
     )
     with pytest.raises(ScriptParseError) as exc:
         parse_script(text)
-    assert exc.value.line == 8  # la numeración de líneas se conserva
+    assert exc.value.line == 8  # line numbering is preserved
     script = parse_script(text.rsplit("\n", 1)[0])
     joined = " ".join(s.text for s in speeches(script))
     assert "nota" not in joined and "varias" not in joined and "en línea" not in joined
     assert "empieza" not in joined and "sigue" not in joined
     assert "Adiós." in joined and "Fin." in joined and "resto." in joined
-    # Un comentario entre dos líneas no corta el párrafo (no añade pausa)
+    # A comment between two lines does not break the paragraph (no pause added)
     assert not any(isinstance(s, Pause) for s in script.segments)
 
 
@@ -309,4 +330,4 @@ def test_unknown_tag_with_colon_still_errors() -> None:
     with pytest.raises(ScriptParseError) as exc:
         parse_script("[voz:ana] hola\n[desconocida:x]")
     assert exc.value.line == 2
-    assert "desconocida" in str(exc.value)
+    assert "desconocida" in str(exc.value) and "unknown tag" in str(exc.value)

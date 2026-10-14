@@ -1,8 +1,8 @@
-"""Selección del dispositivo de cálculo (GPU CUDA o CPU) para los motores locales.
+"""Selection of the compute device (CUDA GPU or CPU) for the local engines.
 
-Por defecto se usa ``cuda`` si PyTorch ve una GPU NVIDIA y, si no, ``cpu``.
-La variable de entorno ``PODCAST_TTS_DEVICE`` (``cpu`` | ``cuda`` | ``auto``)
-fuerza la elección. Importa ``torch`` solo al llamarse.
+By default ``cuda`` is used if PyTorch sees an NVIDIA GPU, otherwise ``cpu``.
+The ``PODCAST_TTS_DEVICE`` environment variable (``cpu`` | ``cuda`` | ``auto``)
+forces the choice. ``torch`` is only imported when the function is called.
 """
 
 from __future__ import annotations
@@ -19,30 +19,30 @@ _warned: set[str] = set()
 
 
 def select_device(engine: str = "") -> str:
-    """Devuelve ``"cuda"`` o ``"cpu"`` según la GPU disponible y ``PODCAST_TTS_DEVICE``.
+    """Return ``"cuda"`` or ``"cpu"`` depending on the available GPU and ``PODCAST_TTS_DEVICE``.
 
-    Lanza :class:`RuntimeError` si se fuerza ``cuda`` y PyTorch no la ve.
-    Avisa (una vez por motor) cuando la síntesis va a ir por CPU.
+    Raises :class:`RuntimeError` if ``cuda`` is forced and PyTorch cannot see it.
+    Warns (once per engine) when synthesis is going to run on the CPU.
     """
     import torch
 
     wanted = os.environ.get(DEVICE_ENV, "").strip().lower() or "auto"
     if wanted not in ("auto", "cpu", "cuda"):
-        log.warning("%s=%r no es válido (usa cpu, cuda o auto); se elige automáticamente.",
+        log.warning("%s=%r is not valid (use cpu, cuda or auto); choosing automatically.",
                     DEVICE_ENV, wanted)
         wanted = "auto"
     cuda_ok = torch.cuda.is_available()
     if wanted == "cuda" and not cuda_ok:
         raise RuntimeError(
-            f"{DEVICE_ENV}=cuda pero PyTorch no ve ninguna GPU CUDA (torch {torch.__version__}). "
-            "Instala la variante CUDA con bats\\install_gpu.bat o quita la variable."
+            f"{DEVICE_ENV}=cuda but PyTorch cannot see any CUDA GPU (torch {torch.__version__}). "
+            "Install the CUDA build with bats\\install_gpu.bat or unset the variable."
         )
     device = "cuda" if (wanted == "cuda" or (wanted == "auto" and cuda_ok)) else "cpu"
     if device == "cpu" and engine not in _warned:
         _warned.add(engine)
-        why = f"forzado con {DEVICE_ENV}=cpu" if wanted == "cpu" else "no hay GPU CUDA disponible"
+        why = f"forced with {DEVICE_ENV}=cpu" if wanted == "cpu" else "no CUDA GPU available"
         log.warning(
-            "%s se ejecutará en CPU (%s): la síntesis será MUY lenta (del orden de 10-50 veces "
-            "más que en una GPU NVIDIA).", engine or "El motor", why,
+            "%s will run on the CPU (%s): synthesis will be VERY slow (roughly 10-50 times "
+            "slower than on an NVIDIA GPU).", engine or "The engine", why,
         )
     return device

@@ -1,16 +1,16 @@
-"""Motor Azure AI Speech (API REST de pago con clave propia; solo stdlib).
+"""Azure AI Speech engine (paid REST API with your own key; stdlib only).
 
-``POST https://{region}.tts.speech.microsoft.com/cognitiveservices/v1`` con la cabecera
-``Ocp-Apim-Subscription-Key`` y un cuerpo SSML. Formato ``raw-24khz-16bit-mono-pcm``.
+``POST https://{region}.tts.speech.microsoft.com/cognitiveservices/v1`` with the
+``Ocp-Apim-Subscription-Key`` header and an SSML body. Format ``raw-24khz-16bit-mono-pcm``.
 
-No tiene nada que ver con Edge-TTS (servicio gratuito no oficial, bloqueado y no
-usado en este proyecto): aquí se usa un recurso de Azure propio con su clave.
+It has nothing to do with Edge-TTS (an unofficial free service, blocked and not
+used in this project): this uses your own Azure resource with its key.
 
-Voz: ``provider_voice_id`` = nombre de la voz neural (p.ej. ``es-ES-AlvaroNeural``).
-``provider_options`` admite ``xml_lang`` (locale del SSML), ``style`` y ``style_degree``
-(``mstts:express-as``), ``role`` y ``pitch`` (p.ej. ``"+5%"``).
+Voice: ``provider_voice_id`` = neural voice name (e.g. ``es-ES-AlvaroNeural``).
+``provider_options`` accepts ``xml_lang`` (SSML locale), ``style`` and ``style_degree``
+(``mstts:express-as``), ``role`` and ``pitch`` (e.g. ``"+5%"``).
 
-Claves: ``AZURE_SPEECH_KEY`` y ``AZURE_SPEECH_REGION`` (entorno o ``.env``).
+Keys: ``AZURE_SPEECH_KEY`` and ``AZURE_SPEECH_REGION`` (environment or ``.env``).
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ def _rate(speed: float) -> str | None:
 
 def build_ssml(text: str, voice_name: str, lang: str, speed: float = 1.0,
                options: dict[str, Any] | None = None) -> str:
-    """SSML con ``xml:lang``, la voz y ``prosody rate`` (si ``speed != 1``)."""
+    """SSML with ``xml:lang``, the voice and ``prosody rate`` (if ``speed != 1``)."""
     opts = options or {}
     m = _LOCALE_RE.match(voice_name)
     voice_locale = m.group(1) if m else None
@@ -75,7 +75,7 @@ def build_ssml(text: str, voice_name: str, lang: str, speed: float = 1.0,
         prosody.append(f"pitch={quoteattr(str(opts['pitch']))}")
     if prosody:
         inner = f"<prosody {' '.join(prosody)}>{inner}</prosody>"
-    # Voces multilingües: si el segmento está en otro idioma, se indica con <lang>.
+    # Multilingual voices: if the segment is in another language, mark it with <lang>.
     if ("multilingual" in voice_name.lower() and seg_locale and voice_locale
             and seg_locale != voice_locale):
         inner = f"<lang xml:lang={quoteattr(seg_locale)}>{inner}</lang>"
@@ -97,11 +97,11 @@ def build_ssml(text: str, voice_name: str, lang: str, speed: float = 1.0,
 
 
 class AzureEngine(CloudEngine):
-    """Motor Azure AI Speech (texto a voz neural).
+    """Azure AI Speech engine (neural text to speech).
 
-    Parámetros (además de los de :class:`CloudEngine`):
-        region: región del recurso (si no, ``AZURE_SPEECH_REGION``).
-        endpoint: URL completa alternativa (p.ej. nubes soberanas o contenedores).
+    Parameters (in addition to those of :class:`CloudEngine`):
+        region: region of the resource (otherwise ``AZURE_SPEECH_REGION``).
+        endpoint: alternative full URL (e.g. sovereign clouds or containers).
     """
 
     name = "azure"
@@ -112,9 +112,9 @@ class AzureEngine(CloudEngine):
         name="Microsoft Product Terms (Azure AI Speech)",
         url="https://www.microsoft.com/licensing/terms/productoffering/MicrosoftAzure",
         commercial_use=True,
-        notes="Uso comercial permitido con una suscripción de Azure propia, sujeto a los "
-              "términos de Microsoft y al código de conducta de Azure AI Speech. "
-              "No es Edge-TTS (que no se usa).",
+        notes="Commercial use allowed with your own Azure subscription, subject to "
+              "Microsoft's terms and the Azure AI Speech code of conduct. "
+              "This is not Edge-TTS (which is not used).",
     )
 
     def __init__(self, api_key: str | None = None, *, region: str | None = None,
@@ -125,15 +125,15 @@ class AzureEngine(CloudEngine):
 
     @property
     def cache_tag(self) -> str:
-        # Azure no tiene "modelo": la voz neural va en provider_voice_id (ya en la huella).
+        # Azure has no "model": the neural voice is in provider_voice_id (already in the fingerprint).
         return f"azure|{OUTPUT_FORMAT}"
 
     def _url(self) -> str:
         if self.endpoint:
             return self.endpoint
-        region = (self.region or self._require("AZURE_SPEECH_REGION", "la región")).strip().lower()
+        region = (self.region or self._require("AZURE_SPEECH_REGION", "the region")).strip().lower()
         if not _REGION_RE.match(region):
-            raise EngineError(f"región de Azure inválida {region!r} (p.ej. westeurope, eastus)")
+            raise EngineError(f"invalid Azure region {region!r} (e.g. westeurope, eastus)")
         return f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1"
 
     def synthesize(self, text: str, voice: "Voice", lang: str, speed: float = 1.0) -> np.ndarray:
