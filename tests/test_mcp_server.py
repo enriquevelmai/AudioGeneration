@@ -44,6 +44,9 @@ def _env(tmp: Path) -> dict[str, str]:
     env = {**os.environ, "PYTHONUTF8": "1", "PYTHONPATH": str(ROOT / "src"),
            "PODCAST_TTS_SCRIPTS_DIR": str(tmp / "guiones"),
            "COQUI_TOS_AGREED": "1"}
+    # F5-TTS's seed_everything() writes os.environ["PYTHONHASHSEED"] = str(seed) with seeds
+    # above 2**32 when the real-engine tests run first; a child Python refuses to start then.
+    env.pop("PYTHONHASHSEED", None)
     return env
 
 
