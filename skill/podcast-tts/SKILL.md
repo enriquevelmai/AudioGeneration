@@ -1,8 +1,8 @@
 ---
 name: podcast-tts
 description: >-
-  Generate podcasts and spoken audio locally with the podcast_tts project (F5-TTS and XTTS v2 on the
-  local NVIDIA GPU). Use whenever the user asks to create a podcast or episode, turn a script or any
+  Generate podcasts and spoken audio locally with the podcast_tts project (F5-TTS and XTTS v2 running
+  locally on an NVIDIA GPU or the CPU). Use whenever the user asks to create a podcast or episode, turn a script or any
   text into audio/MP3, record a voice-over or narration, read text aloud, do text-to-speech (TTS) in
   Spanish/castellano, English or other languages, make a dialogue between several voices, add background
   music to speech, or clone/add a voice from an audio clip. Also triggers on Spanish requests like
@@ -12,31 +12,38 @@ description: >-
 
 # podcast-tts: podcasts y TTS en local
 
-Proyecto: `C:\Users\enriq\Documents\claude\AudioGeneration`
-Intérprete: `C:\Users\enriq\Documents\claude\AudioGeneration\.venv\Scripts\python.exe`
-
 NO usar Edge-TTS, `edge-tts`, SAPI ni voces de Microsoft: están bloqueadas. Usa siempre este proyecto.
 
 ## Cómo invocar el CLI
 
-Fija SIEMPRE `PYTHONUTF8=1` y `COQUI_TOS_AGREED=1` (sin esta última XTTS se cuelga esperando input).
+Usa SIEMPRE uno de los dos wrappers de esta skill; no escribas rutas de usuario a mano. Localizan el
+proyecto (variable `PODCAST_TTS_HOME`; si no, el destino de la junction
+`~/.claude/skills/podcast-tts`; si no, la ruta relativa dentro del repositorio), fijan `PYTHONUTF8=1`,
+`PYTHONIOENCODING=utf-8` y `COQUI_TOS_AGREED=1` (sin esta última XTTS se cuelga esperando input) y
+pasan todos los argumentos al CLI.
 
 Bash (Git Bash):
 ```bash
-P=/c/Users/enriq/Documents/claude/AudioGeneration
-cd "$P" && PYTHONUTF8=1 COQUI_TOS_AGREED=1 "$P/.venv/Scripts/python.exe" -m podcast_tts <comando> ...
+T=~/.claude/skills/podcast-tts/scripts/generar.sh
+bash "$T" voices list --json
+bash "$T" generate "$PWD/guion.md" -o "$PWD/episodio.mp3"
+bash "$T" --where     # imprime la raíz del proyecto (contiene guiones/, output/, voices/)
 ```
 
-PowerShell, o el wrapper `scripts/generar.ps1` de esta skill (fija las variables y pasa los args):
+PowerShell:
 ```powershell
-$env:PYTHONUTF8='1'; $env:COQUI_TOS_AGREED='1'
-& 'C:\Users\enriq\Documents\claude\AudioGeneration\.venv\Scripts\python.exe' -m podcast_tts <comando> ...
-# o bien:
-& "$HOME\.claude\skills\podcast-tts\scripts\generar.ps1" generate guion.md -o salida.mp3
+$T = "$HOME\.claude\skills\podcast-tts\scripts\generar.ps1"
+& $T voices list --json
+& $T generate C:\ruta\guion.md -o C:\ruta\episodio.mp3
+& $T --where
 ```
 
-Las voces se buscan en `<proyecto>\voices` (`--voices-dir` para otra carpeta). Usa rutas absolutas para
-guion y salida si no estás en la raíz del proyecto.
+En los ejemplos de abajo, `<cli>` es cualquiera de los dos wrappers. Si dice que no encuentra el
+proyecto o el entorno, el usuario debe ejecutar `bats\install.bat` en la raíz del repositorio (o
+definir `PODCAST_TTS_HOME`).
+
+Las voces se buscan en `<proyecto>/voices` (`--voices-dir` para otra carpeta). El wrapper no cambia
+de directorio: usa rutas absolutas para guion y salida.
 
 Subcomandos:
 - `generate GUION.md -o SALIDA.mp3` — opciones: `--engine f5|xtts|dummy` (fuerza motor para todo),
@@ -45,18 +52,20 @@ Subcomandos:
 - `parse GUION.md [--compact]` — valida y muestra los segmentos en JSON (no sintetiza).
 - `voices list [--json]`, `voices add ...`, `voices remove NOMBRE`.
 - `ui` — interfaz web local (Gradio).
+- `models list|status [--json]` — modelos (repo, tamaño, licencia, uso comercial) y si están
+  descargados. `models download [nombre|all]` los baja ya; `models update` busca versiones nuevas.
 
 ## Flujo recomendado
 
 1. **Listar voces**: `voices list --json`. NUNCA inventes nombres de voz: usa solo las que aparecen
    (mira `name`, `lang`, `engine`, `has_ref`, `xtts_speaker`, `description`). Si ninguna encaja,
    pregunta al usuario o crea una (ver "Añadir una voz").
-2. **Escribir el guion** `.md` (UTF-8) en `C:\Users\enriq\Documents\claude\AudioGeneration\guiones\`
-   (créala si no existe) o en el cwd del usuario si lo prefiere. Sigue los consejos de redacción.
+2. **Escribir el guion** `.md` (UTF-8) en `<proyecto>/guiones/` (la raíz la da `--where`; créala si
+   no existe) o en el cwd del usuario si lo prefiere. Sigue los consejos de redacción.
 3. **Validar**: `parse guion.md`. Corrige cualquier error (da número de línea) y comprueba que cada
    segmento `speech` tenga la voz e idioma esperados. `"lang": null` en un segmento significa "sin
    etiqueta `lang=`": se usará el `lang` del front matter si lo hay y, si no, el de `voice.json`.
-4. **Generar**: `generate guion.md -o <ruta>.mp3` (por defecto en `...\AudioGeneration\output\`).
+4. **Generar**: `generate guion.md -o <ruta>.mp3` (p.ej. en `<proyecto>/output/`).
    Para probar tiempos y mezcla sin GPU: `--engine dummy` (tonos en lugar de voz).
 5. **Reportar** la ruta absoluta del fichero y su duración:
    `ffprobe -v error -show_entries format=duration -of csv=p=0 salida.mp3`
@@ -125,19 +134,22 @@ varios idiomas o varias secciones).
 
 ```bash
 # Clonada: clip de 5-15 s, limpio, sin música, y su transcripción EXACTA
-... -m podcast_tts voices add lucia "C:/ruta/clip.wav" --text "Transcripción exacta del clip." --lang es --engine f5 --description "mujer, cálida"
+<cli> voices add lucia "C:/ruta/clip.wav" --text "Transcripción exacta del clip." --lang es --engine f5 --description "mujer, cálida"
 #   (--text-file trans.txt en vez de --text; --speed 1.05; --overwrite para reemplazar)
 # Speaker integrado de XTTS (sin clip):
-... -m podcast_tts voices add narrador --engine xtts --xtts-speaker "Claribel Dervla" --lang en
+<cli> voices add narrador --engine xtts --xtts-speaker "Claribel Dervla" --lang en
 ```
 Queda en `voices/<nombre>/` (`ref.wav` mono 24 kHz, `ref.txt`, `voice.json`). Nombre: letras, números, `_` o `-`.
 Confirma después con `voices list`.
 
-## Tiempos esperados (RTX 4080 SUPER)
+## Tiempos esperados
 
-- Primera carga del modelo: 10-30 s (XTTS ~10 s en caché, ~30 s si descarga; F5 unos segundos).
-- Después ~0.2-0.3× tiempo real: un episodio de 10 min tarda ~2-3 min. Para guiones largos usa
-  timeout amplio (p.ej. 600000 ms) o ejecútalo en segundo plano.
+- Primera vez: si los modelos no están descargados se bajan solos (~1.3-1.9 GB cada uno); comprueba
+  antes con `models status` y, si faltan, avisa al usuario o ejecuta `models download`.
+- Primera carga del modelo: 10-30 s (XTTS ~10 s en caché; F5 unos segundos).
+- Con GPU NVIDIA (p.ej. RTX 4080) ~0.2-0.3× tiempo real: un episodio de 10 min tarda ~2-3 min.
+  En CPU es muchísimo más lento (avisa al usuario y empieza por textos cortos). Para guiones largos
+  usa timeout amplio (p.ej. 600000 ms) o ejecútalo en segundo plano.
 
 ## Errores comunes
 
@@ -146,13 +158,17 @@ Confirma después con `voices list`.
 - **Texto sin voz**: añade `default_voice` en el front matter o una `[voz:]` antes del texto.
 - **ffmpeg / "no se pudo leer el audio"**: ffmpeg debe estar en PATH (`ffmpeg -version`); revisa la ruta
   de música/sfx (relativa al guion, no al cwd).
-- **CUDA no disponible / out of memory**: `.venv\Scripts\python.exe scripts\check_env.py`; cierra otros
-  procesos que usen la GPU (p.ej. la UI abierta) y reintenta. `--engine dummy` para probar sin GPU.
-- **XTTS se queda colgado al cargar**: falta `COQUI_TOS_AGREED=1`.
-- **UnicodeEncodeError**: falta `PYTHONUTF8=1`.
-- Entorno roto: `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` en la raíz del proyecto.
+- **CUDA no disponible / out of memory**: diagnóstico con `.venv\Scripts\python.exe scripts\check_env.py`
+  en la raíz del proyecto (`--where`); cierra otros procesos que usen la GPU (p.ej. la UI abierta) y
+  reintenta. Si hay GPU NVIDIA pero se instaló la variante CPU: `bats\install_gpu.bat`.
+  `PODCAST_TTS_DEVICE=cpu|cuda` fuerza el dispositivo. `--engine dummy` para probar sin modelos.
+- **"no se pudo cargar el motor" / falta f5_tts o TTS**: no está instalado el extra `local`;
+  ejecutar `bats\install.bat`.
+- **XTTS se queda colgado al cargar**: falta `COQUI_TOS_AGREED=1` (los wrappers ya la fijan).
+- **UnicodeEncodeError**: falta `PYTHONUTF8=1` (los wrappers ya la fijan).
+- Entorno roto o desactualizado: `bats\install.bat` o `bats\update.bat` en la raíz del proyecto.
 
 ## UI
 
-`... -m podcast_tts ui` lanza la interfaz web local (Gradio). Ejecútala en segundo plano y pasa al
+`<cli> ui` lanza la interfaz web local (Gradio). Ejecútala en segundo plano y pasa al
 usuario la URL que imprime (normalmente http://127.0.0.1:7860).
