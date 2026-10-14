@@ -69,6 +69,11 @@ class ElevenLabsEngine(CloudEngine):
         self.voice_settings = dict(voice_settings or {})
         self.base_url = base_url.rstrip("/")
 
+    @property
+    def cache_tag(self) -> str:
+        settings = json.dumps(self.voice_settings, sort_keys=True, default=str)
+        return f"elevenlabs|{self.model_id}|{OUTPUT_FORMAT}|{settings}"
+
     def build_request(self, text: str, voice: "Voice", lang: str, speed: float = 1.0
                       ) -> tuple[str, dict[str, Any]]:
         """URL y cuerpo JSON de la petición (sin la clave)."""

@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Sequence
@@ -25,6 +26,7 @@ from typing import Callable, Sequence
 import numpy as np
 
 from .engines import TTSEngine, get_engine
+from .engines.base import engine_cache_tag
 from .script_parser import Music, ParsedScript, Pause, Segment, Sfx, Speech, parse_file
 from .voices import PROJECT_ROOT, Voice, VoiceNotFoundError, default_voices_dir, get_voice
 
@@ -37,6 +39,7 @@ __all__ = [
     "SynthesisCache",
     "assemble",
     "export_audio",
+    "ffmpeg_available",
     "generate",
     "normalize_loudness",
     "render",
@@ -51,6 +54,7 @@ EngineResolver = Callable[[str], TTSEngine]
 """Función ``nombre_motor -> instancia``. Por defecto :func:`engines.get_engine`."""
 
 DEFAULT_CACHE_DIR = PROJECT_ROOT / ".cache" / "tts"
+MAX_EPISODE_SECONDS = 24 * 3600  # tope de seguridad de la línea temporal
 
 
 class AssembleError(RuntimeError):
@@ -73,6 +77,9 @@ class AssembleOptions:
     duck_ramp: float = 0.3  # duración de las rampas de ducking (s)
     duck_min_gap: float = 1.0  # huecos sin voz más cortos no suben la música
     bg_full_ratio: float = 2.5  # volumen sin voz = min(1, vol * ratio)
+    # False (UI remota): música/sfx solo con rutas relativas dentro de base_dir o del
+    # proyecto; se rechazan las absolutas y las que contienen '..'.
+    allow_external_paths: bool = True
 
 
 @dataclass
@@ -127,9 +134,33 @@ def _array_to_segment(x: np.ndarray, sr: int) -> "AudioSegment":  # noqa: F821
     return AudioSegment(pcm.tobytes(), frame_rate=sr, sample_width=2, channels=1)
 
 
+FFMPEG_HINT = (
+    "Instálalo con `winget install Gyan.FFmpeg` (y abre una consola nueva) o usa "
+    "ficheros .wav, que no lo necesitan."
+)
+
+
+def ffmpeg_available() -> bool:
+    """``True`` si pydub encuentra ffmpeg (en el PATH o en ``AudioSegment.converter``)."""
+    try:
+        from pydub import AudioSegment
+
+        converter = str(getattr(AudioSegment, "converter", "") or "ffmpeg")
+    except ImportError:  # pragma: no cover - pydub es dependencia obligatoria
+        converter = "ffmpeg"
+    return bool(shutil.which(converter) or shutil.which("ffmpeg"))
+
+
+def _require_ffmpeg(what: str) -> None:
+    if not ffmpeg_available():
+        raise AssembleError(f"no se encuentra ffmpeg, necesario para {what}. {FFMPEG_HINT}")
+
+
 def _load_audio_file(path: Path, sr: int) -> np.ndarray:
     from pydub import AudioSegment
 
+    if path.suffix.lower() != ".wav":
+        _require_ffmpeg(f"leer '{path.name}' (formato {path.suffix or 'desconocido'})")
     try:
         return _segment_to_array(AudioSegment.from_file(str(path)), sr)
     except Exception as exc:
@@ -206,9 +237,12 @@ class SynthesisCache:
         self.misses = 0
 
     @staticmethod
-    def key(text: str, voice: Voice, lang: str, speed: float, engine: str) -> str:
+    def key(text: str, voice: Voice, lang: str, speed: float, engine: str,
+            engine_tag: str = "") -> str:
+        """Clave de caché. ``engine_tag`` es el ``cache_tag`` del motor (modelo,
+        versión y parámetros): si cambia, la frase se vuelve a sintetizar."""
         payload = json.dumps(
-            [text, voice.fingerprint(), lang, round(float(speed), 4), engine],
+            [text, voice.fingerprint(), lang, round(float(speed), 4), engine, engine_tag],
             ensure_ascii=False,
         )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -284,11 +318,11 @@ def synthesize_speech(
     if cache is None:
         cache = SynthesisCache(options.cache_dir)
     r = resolve_speech(seg, script, Path(voices_dir) if voices_dir else None, options)
-    key = cache.key(seg.text, r.voice, r.lang, r.speed, r.engine)
+    engine = resolver(r.engine)  # crear la instancia es barato: los modelos se cargan al sintetizar
+    key = cache.key(seg.text, r.voice, r.lang, r.speed, r.engine, engine_cache_tag(engine))
     cached = cache.get(key)
     if cached is not None:
         return cached
-    engine = resolver(r.engine)
     try:
         audio = engine.synthesize(seg.text, r.voice, r.lang, r.speed)
     except NotImplementedError:
@@ -318,13 +352,25 @@ class _BgTrack:
 
 
 def _resolve_path(raw: str, options: AssembleOptions, line: int | None) -> Path:
+    where = f"línea {line}: " if line else ""
     path = Path(raw)
+    if not options.allow_external_paths:
+        if path.is_absolute() or path.drive or path.root or ".." in path.parts:
+            raise AssembleError(
+                f"{where}ruta de audio no permitida '{raw}': en modo remoto solo se admiten "
+                "rutas relativas a la carpeta del guion o del proyecto, sin '..'"
+            )
+        roots = [r.resolve() for r in (options.base_dir, PROJECT_ROOT) if r is not None]
+        for root in roots:
+            cand = (root / path).resolve()
+            if cand.is_relative_to(root) and cand.is_file():
+                return cand
+        raise AssembleError(f"{where}no existe el fichero de audio '{raw}'")
     if not path.is_absolute():
         candidates = [options.base_dir / path] if options.base_dir else []
         candidates += [Path.cwd() / path, PROJECT_ROOT / path]
         path = next((c for c in candidates if c.is_file()), candidates[0])
     if not path.is_file():
-        where = f"línea {line}: " if line else ""
         raise AssembleError(f"{where}no existe el fichero de audio '{raw}' (buscado en {path})")
     return path
 
@@ -380,6 +426,24 @@ def render(
     progress: ProgressCallback | None = None,
 ) -> tuple[np.ndarray, int]:
     """Monta el episodio y devuelve ``(audio float32 mono, sample_rate)`` sin exportar."""
+    try:
+        return _render(script, voices_dir=voices_dir, engine_resolver=engine_resolver,
+                       options=options, progress=progress)
+    except (OverflowError, MemoryError) as exc:
+        raise AssembleError(
+            "el episodio es demasiado largo para montarlo en memoria (revisa las pausas, "
+            f"fundidos y la música del guion): {type(exc).__name__}: {exc}"
+        ) from exc
+
+
+def _render(
+    script: ParsedScript | Sequence[Segment],
+    *,
+    voices_dir: str | Path | None,
+    engine_resolver: EngineResolver | None,
+    options: AssembleOptions | None,
+    progress: ProgressCallback | None,
+) -> tuple[np.ndarray, int]:
     options = options or AssembleOptions()
     if not isinstance(script, ParsedScript):
         script = ParsedScript(segments=list(script))
@@ -456,6 +520,8 @@ def render(
 
     length = max([cursor] + [s + a.size for s, a in placed]
                  + [t.end for t in bg_tracks if t.end is not None])
+    if length > MAX_EPISODE_SECONDS * sr:
+        raise OverflowError(f"{length / sr:.0f} s > {MAX_EPISODE_SECONDS} s")
     out = np.zeros(length, dtype=np.float32)
     for start, audio in placed:
         out[start:start + audio.size] += audio
@@ -501,12 +567,20 @@ def export_audio(audio: "AudioSegment", path: str | Path, *,  # noqa: F821
     fmt = path.suffix.lower().lstrip(".") or "mp3"
     if fmt not in ("mp3", "wav", "flac", "ogg", "m4a"):
         raise AssembleError(f"formato de salida no soportado: .{fmt} (usa .mp3 o .wav)")
+    if fmt != "wav":
+        _require_ffmpeg(f"exportar a .{fmt}")
     kwargs: dict[str, object] = {"format": "ipod" if fmt == "m4a" else fmt}
     if fmt in ("mp3", "ogg", "m4a"):
         kwargs["bitrate"] = bitrate
     if tags and fmt == "mp3":
         kwargs["tags"] = tags
-    audio.export(str(path), **kwargs).close()  # pydub devuelve el fichero abierto
+    try:
+        audio.export(str(path), **kwargs).close()  # pydub devuelve el fichero abierto
+    except FileNotFoundError as exc:  # ffmpeg desapareció o AudioSegment.converter inválido
+        if fmt == "wav":
+            raise
+        raise AssembleError(f"no se pudo ejecutar ffmpeg para exportar a .{fmt}: {exc}. "
+                            f"{FFMPEG_HINT}") from exc
     return path
 
 

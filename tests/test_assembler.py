@@ -267,3 +267,108 @@ def test_cli_generate_parse_and_voices(tmp_path, tone_factory) -> None:
     bad.write_text("[voz:ana] hola\n[raro:1]", encoding="utf-8")
     r = run("parse", str(bad))
     assert r.returncode == 1 and "Línea 2" in r.stderr
+
+
+# --------------------------------------------------------------------------- #
+# Regresiones de la revisión de código
+# --------------------------------------------------------------------------- #
+
+
+def test_render_overflow_is_assemble_error(tmp_path) -> None:
+    # Una pausa no finita (saltándose el parser) no debe acabar en OverflowError.
+    with pytest.raises(AssembleError, match="demasiado largo"):
+        render([Pause(seconds=float("inf"))], voices_dir=tmp_path, options=opts(tmp_path))
+    with pytest.raises(AssembleError, match="demasiado largo"):
+        render([Pause(seconds=1e15)], voices_dir=tmp_path, options=opts(tmp_path))
+
+
+def test_no_ffmpeg_gives_clear_error(tmp_path, tone_factory, monkeypatch) -> None:
+    import podcast_tts.assembler as asm
+
+    monkeypatch.setattr(asm.shutil, "which", lambda *_a, **_k: None)
+    audio = assemble([Speech(voice="a", text="Hola.")], voices_dir=tmp_path,
+                     options=opts(tmp_path))
+    with pytest.raises(AssembleError, match="winget install Gyan.FFmpeg"):
+        export_audio(audio, tmp_path / "out.mp3")
+    # WAV no necesita ffmpeg
+    assert export_audio(audio, tmp_path / "out.wav").is_file()
+    # Cargar audio que no es WAV tampoco
+    (tmp_path / "musica.mp3").write_bytes(b"no importa")
+    with pytest.raises(AssembleError, match="ffmpeg"):
+        render(parse_script("[musica:musica.mp3]"), voices_dir=tmp_path, options=opts(tmp_path))
+    tone_factory("bed.wav", 0.5, channels=1)
+    audio, _sr = render(parse_script("[musica:bed.wav]"), voices_dir=tmp_path,
+                        options=opts(tmp_path))
+    assert audio.size > 0
+
+
+@pytest.mark.parametrize("raw", ["../fuera.wav", "sub/../../fuera.wav", "ABS", "C:fuera.wav",
+                                 "\\fuera.wav"])
+def test_external_paths_rejected_in_remote_mode(tmp_path, tone_factory, raw) -> None:
+    base = tmp_path / "guion"
+    base.mkdir()
+    outside = tone_factory("fuera.wav", 0.5, channels=1)
+    if raw == "ABS":
+        raw = str(outside)
+    script = parse_script(f'[sfx:"{raw}"]')
+    with pytest.raises(AssembleError, match="no permitida"):
+        render(script, voices_dir=tmp_path,
+               options=opts(tmp_path, base_dir=base, allow_external_paths=False))
+
+
+def test_relative_paths_allowed_in_remote_mode(tmp_path, tone_factory) -> None:
+    base = tmp_path / "guion"
+    tone_factory("guion/sfx/ok.wav", 0.5, channels=1)
+    script = parse_script("[sfx:sfx/ok.wav]\n[pausa:1]")
+    audio, sr = render(script, voices_dir=tmp_path,
+                       options=opts(tmp_path, base_dir=base, allow_external_paths=False))
+    assert audio.size / sr == pytest.approx(1.0, abs=0.01)
+    # Un fichero relativo que no existe en base_dir ni en el proyecto no se busca en el cwd
+    with pytest.raises(AssembleError, match="no existe"):
+        render(parse_script("[sfx:nada.wav]"), voices_dir=tmp_path,
+               options=opts(tmp_path, base_dir=base, allow_external_paths=False))
+    # En modo local las rutas absolutas siguen funcionando
+    render(parse_script(f'[sfx:"{tmp_path / "guion" / "sfx" / "ok.wav"}"]'),
+           voices_dir=tmp_path, options=opts(tmp_path, base_dir=base))
+
+
+class TaggedDummy(DummyEngine):
+    def __init__(self, tag: str) -> None:
+        super().__init__()
+        self.tag = tag
+
+    @property
+    def cache_tag(self) -> str:
+        return self.tag
+
+
+def test_cache_key_depends_on_engine_cache_tag(tmp_path) -> None:
+    script = parse_script("[voz:ana] Hola.")
+    options = opts(tmp_path)
+    engine = TaggedDummy("modelo-v1")
+    render(script, voices_dir=tmp_path, options=options, engine_resolver=lambda _n: engine)
+    render(script, voices_dir=tmp_path, options=options, engine_resolver=lambda _n: engine)
+    assert engine.calls == 1
+    engine.tag = "modelo-v2"
+    render(script, voices_dir=tmp_path, options=options, engine_resolver=lambda _n: engine)
+    assert engine.calls == 2
+
+
+def test_builtin_engines_declare_cache_tag() -> None:
+    from podcast_tts.engines.azure import AzureEngine
+    from podcast_tts.engines.base import engine_cache_tag
+    from podcast_tts.engines.elevenlabs import ElevenLabsEngine
+    from podcast_tts.engines.f5 import F5Engine
+    from podcast_tts.engines.openai import OpenAIEngine
+    from podcast_tts.engines.xtts import XTTSEngine
+
+    f5_a, f5_b = engine_cache_tag(F5Engine()), engine_cache_tag(F5Engine(nfe_step=16))
+    assert "F5-Spanish" in f5_a and "nfe=32" in f5_a and f5_a != f5_b
+    xtts = engine_cache_tag(XTTSEngine())
+    assert "xtts_v2" in xtts and "coqui-tts=" in xtts
+    assert engine_cache_tag(XTTSEngine(temperature=0.5)) != xtts
+    assert "eleven_" in engine_cache_tag(ElevenLabsEngine(api_key="x"))
+    assert engine_cache_tag(OpenAIEngine(api_key="x", model="m1")) != engine_cache_tag(
+        OpenAIEngine(api_key="x", model="m2"))
+    assert engine_cache_tag(AzureEngine(api_key="x")).startswith("azure")
+    assert engine_cache_tag(object()) == ""

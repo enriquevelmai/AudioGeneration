@@ -123,6 +123,11 @@ class AzureEngine(CloudEngine):
         self.region = region
         self.endpoint = endpoint
 
+    @property
+    def cache_tag(self) -> str:
+        # Azure no tiene "modelo": la voz neural va en provider_voice_id (ya en la huella).
+        return f"azure|{OUTPUT_FORMAT}"
+
     def _url(self) -> str:
         if self.endpoint:
             return self.endpoint

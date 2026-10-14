@@ -343,6 +343,14 @@ def _convert_reference(src: Path, dst: Path, max_seconds: float) -> float:
     """Convierte ``src`` a WAV mono 24 kHz 16 bit (máx ``max_seconds``). Devuelve la duración."""
     from pydub import AudioSegment
 
+    if src.suffix.lower() != ".wav" and not (
+        shutil.which(str(getattr(AudioSegment, "converter", "") or "ffmpeg"))
+        or shutil.which("ffmpeg")
+    ):
+        raise VoiceError(
+            f"no se encuentra ffmpeg, necesario para leer '{src.name}'. Instálalo con "
+            "`winget install Gyan.FFmpeg` (y abre una consola nueva) o usa un clip .wav."
+        )
     try:
         audio = AudioSegment.from_file(str(src))
     except Exception as exc:  # pydub lanza CouldntDecodeError, FileNotFoundError...

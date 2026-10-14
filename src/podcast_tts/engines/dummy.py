@@ -36,6 +36,10 @@ class DummyEngine:
     def sample_rate(self) -> int:
         return self._sample_rate
 
+    @property
+    def cache_tag(self) -> str:
+        return f"dummy|{self._sample_rate}|{self.seconds_per_char:g}"
+
     def synthesize(self, text: str, voice: "Voice", lang: str, speed: float = 1.0) -> np.ndarray:
         self.calls += 1
         speed = speed if speed and speed > 0 else 1.0

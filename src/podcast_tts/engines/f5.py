@@ -173,6 +173,15 @@ class F5Engine:
     def sample_rate(self) -> int:
         return SAMPLE_RATE
 
+    @property
+    def cache_tag(self) -> str:
+        """Modelos (cfg + checkpoint), versión de f5-tts y parámetros de inferencia."""
+        from .base import package_version
+
+        models = ";".join(f"{k}={m}:{c}" for k, (m, c, _v) in sorted(_MODEL_SPECS.items()))
+        return (f"f5|{models}|f5-tts={package_version('f5-tts')}|nfe={self.nfe_step}"
+                f"|xfade={self.cross_fade_duration:g}|seed={self.seed}")
+
     @staticmethod
     def _model_key(lang: str) -> str:
         code = (lang or "").lower().split("-")[0].split("_")[0]

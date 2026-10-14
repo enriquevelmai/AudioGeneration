@@ -16,6 +16,8 @@ __all__ = [
     "LicenseInfo",
     "TTSEngine",
     "UNKNOWN_LICENSE",
+    "engine_cache_tag",
+    "package_version",
 ]
 
 #: Valor de ``LicenseInfo.commercial_use`` cuando depende del plan contratado con el proveedor.
@@ -69,6 +71,24 @@ UNKNOWN_LICENSE = LicenseInfo(
 )
 
 
+def package_version(dist: str) -> str:
+    """Versión instalada del paquete ``dist`` (``""`` si no está instalado)."""
+    from importlib import metadata
+
+    try:
+        return metadata.version(dist)
+    except metadata.PackageNotFoundError:
+        return ""
+
+
+def engine_cache_tag(engine: Any) -> str:
+    """``cache_tag`` del motor (atributo, propiedad o método sin argumentos); ``""`` si no tiene."""
+    tag = getattr(engine, "cache_tag", "")
+    if callable(tag):
+        tag = tag()
+    return str(tag or "")
+
+
 @runtime_checkable
 class TTSEngine(Protocol):
     """Protocolo que implementan todos los motores (integrados y de terceros).
@@ -80,6 +100,10 @@ class TTSEngine(Protocol):
     - ``kind`` (opcional, por defecto ``"local"``): ``"local"`` o ``"cloud"``.
     - ``required_config`` (opcional, por defecto ``()``): variables de configuración
       necesarias (p.ej. ``("OPENAI_API_KEY",)``), que se leen con :mod:`podcast_tts.config`.
+    - ``cache_tag`` (opcional, texto o propiedad): identifica el modelo, su versión y los
+      parámetros que cambian el audio. Forma parte de la clave de la caché de síntesis,
+      así que al cambiarlo se vuelven a sintetizar las frases (ver
+      :func:`engine_cache_tag`).
 
     Métodos:
 

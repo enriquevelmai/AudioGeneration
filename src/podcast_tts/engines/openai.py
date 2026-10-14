@@ -66,6 +66,10 @@ class OpenAIEngine(CloudEngine):
         self.instructions = instructions
         self.base_url = base_url.rstrip("/")
 
+    @property
+    def cache_tag(self) -> str:
+        return f"openai|{self.model}|{self.instructions or ''}"
+
     def build_request(self, text: str, voice: "Voice", lang: str, speed: float = 1.0
                       ) -> tuple[str, dict[str, Any]]:
         """URL y cuerpo JSON de la petición (sin la clave)."""

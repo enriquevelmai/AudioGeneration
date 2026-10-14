@@ -76,6 +76,11 @@ class CloudEngine:
     def sample_rate(self) -> int:
         return SAMPLE_RATE
 
+    @property
+    def cache_tag(self) -> str:
+        """Motor y modelo por defecto (las subclases añaden su ``model_id``)."""
+        return self.name
+
     # ------------------------------------------------------------------ claves
     def _config_value(self, name: str) -> str | None:
         from ..config import get_key

@@ -94,7 +94,7 @@ class XTTSEngine:
     name = "xtts"
     license_info = LicenseInfo(
         name="Coqui Public Model License 1.0.0",
-        url="https://coqui.ai/cpml",
+        url="https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt",
         commercial_use=False,
         notes="Pesos de XTTS v2: solo uso no comercial (CPML). Coqui ya no vende licencias "
               "comerciales. El código de coqui-tts es MPL-2.0, pero los pesos no.",
@@ -114,6 +114,13 @@ class XTTSEngine:
     @property
     def sample_rate(self) -> int:
         return SAMPLE_RATE
+
+    @property
+    def cache_tag(self) -> str:
+        """Modelo, versión de coqui-tts y temperatura."""
+        from .base import package_version
+
+        return f"xtts|{MODEL_NAME}|coqui-tts={package_version('coqui-tts')}|temp={self.temperature}"
 
     @staticmethod
     def speakers() -> list[str]:
