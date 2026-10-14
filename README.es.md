@@ -92,9 +92,10 @@ propio PC.
 
 1. Descarga **`AudioGeneration-v1.0.0-windows.zip`** de la
    [**última release**](https://github.com/enriquevelmai/AudioGeneration/releases/latest).
-2. Descomprímelo en la carpeta que quieras, por ejemplo `Documentos\AudioGeneration`. Evita
-   carpetas que requieran permisos de administrador, como `Archivos de programa`.
-3. Haz doble clic en **`AudioGeneration.exe`**.
+2. Extráelo (clic derecho → **Extraer todo**) en la carpeta que quieras, por ejemplo
+   `Documentos`. El zip contiene una carpeta `AudioGeneration` con todo dentro. Evita carpetas que
+   requieran permisos de administrador, como `Archivos de programa`, y las rutas muy largas.
+3. Abre la carpeta `AudioGeneration` y haz doble clic en **`AudioGeneration.exe`**.
 4. **La primera vez** instala solo todo lo necesario: Python, las dependencias y, si tienes una GPU
    NVIDIA, PyTorch con CUDA. Tarda unos **10-15 minutos** y ocupa **unos 6-7 GB** con GPU, según tu
    conexión. También puede instalar `ffmpeg`, descargar los modelos de voz y crear accesos directos
@@ -127,8 +128,10 @@ bats\install.bat
 4. comprueba `ffmpeg` y ofrece instalarlo con `winget` si falta;
 5. ofrece descargar ya los modelos, crear accesos directos e instalar la skill de Claude Code.
 
-Opciones: `/y` responde que sí a todo (sin preguntas), `/cpu` o `/cuda` fuerzan la variante de
-PyTorch. También puedes generar `AudioGeneration.exe` con `bats\build_launcher.bat`.
+Opciones: `/y` responde que sí a todo, accesos directos incluidos (sin preguntas), `/noshortcuts`
+no crea los accesos directos, `/cpu` o `/cuda` fuerzan la variante de PyTorch y `/dev` añade las
+herramientas de desarrollo (pytest). También puedes generar `AudioGeneration.exe` con
+`bats\build_launcher.bat`.
 
 ### Requisitos
 
@@ -204,8 +207,16 @@ podcast-tts models download all
 
 # Interfaces
 podcast-tts desktop                          # ventana de escritorio
-podcast-tts ui --port 7861 --inbrowser       # navegador; --host 0.0.0.0 para tu red local, --share para un enlace público de Gradio
+podcast-tts ui --port 7861 --inbrowser       # navegador, solo en este PC (127.0.0.1)
+podcast-tts ui --host 0.0.0.0 --auth ana:una-clave-larga   # tu red local, con usuario y clave
 ```
+
+> [!WARNING]
+> La UI no tiene cuentas: quien pueda abrirla puede generar audio, borrar voces y usar tus claves
+> de API. Con un `--host` distinto de `127.0.0.1`/`localhost`, o con `--share` (enlace público de
+> Gradio), no arranca sin `--auth usuario:clave` (o la variable `PODCAST_TTS_AUTH`) y funciona en
+> *modo remoto*: sin la pestaña **Ajustes** (claves de API) y con música/sfx solo desde rutas
+> relativas. Ábrela solo en redes de confianza.
 
 Opciones útiles de `generate`: `--engine` (fuerza un motor para todo el guion), `--voices-dir`,
 `--max-chars 250`, `--bitrate 192k`, `--sample-rate 44100`, `--lufs -16`, `--no-normalize`,
@@ -238,7 +249,9 @@ paragraph_pause: 0.4  # pausa entre párrafos, en segundos
 | `[sfx:fichero.wav]` | | Efecto superpuesto en ese punto (no avanza el tiempo) | `vol=0-1` (1.0) |
 | `[titulo:...]` | `[title:...]`, `[título:...]` | Metadato, no se pronuncia | |
 
-- Las líneas que empiezan por `#` o `<!--` son comentarios y nunca suenan.
+- Las líneas que empiezan por `#` y los bloques `<!-- ... -->` (también de varias líneas) son
+  comentarios y nunca suenan. Los corchetes que no son una etiqueta `[tipo:...]`, como las
+  casillas `- [ ]`, son texto normal, y los enlaces Markdown `[texto](url)` se leen como "texto".
 - Una línea en blanco separa párrafos y añade una pausa corta.
 - Las rutas de música y efectos son relativas al guion; las rutas con espacios van entre comillas:
   `[musica:"mis audios/intro.mp3"]`.
@@ -261,7 +274,8 @@ lang: es
 
 Ejemplos listos para usar: [examples/ejemplo.md](examples/ejemplo.md) (castellano, con frases en
 inglés), [examples/english_episode.md](examples/english_episode.md) (inglés) y
-[guiones/ejemplo_dialogo.md](guiones/ejemplo_dialogo.md) (diálogo bilingüe). La referencia
+[examples/ejemplo_dialogo.md](examples/ejemplo_dialogo.md) (diálogo bilingüe). Los guiones que
+guardas desde la app van a `guiones/`, que git ignora. La referencia
 completa, con más ejemplos, está en
 [skill/podcast-tts/references/formato-guion.md](skill/podcast-tts/references/formato-guion.md).
 
@@ -368,8 +382,9 @@ AudioGeneration funciona perfectamente sin ella.
 
 ## Actualizar
 
-- **Release (zip)**: abre `AudioGeneration.exe`. Consulta la última release de GitHub y ofrece
-  actualizar.
+- **Release (zip)**: abre `AudioGeneration.exe`. Consulta la última release de GitHub y, si hay
+  una más nueva, ofrece abrir su página de descarga; extrae el zip nuevo y vuelve a ejecutar
+  `bats\install.bat`.
 - **Clon de Git**: `AudioGeneration.exe` lo comprueba con Git, o ejecuta `bats\update.bat`, que
   trae el código, sincroniza las dependencias con las mismas opciones con las que instalaste y
   actualiza los modelos descargados.
@@ -378,6 +393,17 @@ AudioGeneration funciona perfectamente sin ella.
 ---
 
 ## Problemas frecuentes
+
+<details>
+<summary><b>No pasa nada al abrirla, o "No module named podcast_tts"</b></summary>
+
+Instala AudioGeneration en una **ruta corta** y sin caracteres raros, por ejemplo
+`C:\AudioGeneration` o `Documentos\AudioGeneration`: las rutas muy largas rompen algunas
+dependencias (numba avisa de "filename too long"). Las carpetas con acentos o `ñ` funcionan desde
+esta versión; si instalaste una anterior en una, vuelve a ejecutar `bats\install.bat`. Si la app
+se cierra nada más abrirse, `AudioGeneration.exe` muestra el final del registro; los detalles
+están en `launcher.log` (junto al exe) y en `%LOCALAPPDATA%\AudioGeneration\desktop.log`.
+</details>
 
 <details>
 <summary><b>La síntesis es muy lenta / no se usa CUDA</b></summary>
@@ -471,7 +497,8 @@ AudioGeneration/
 │   ├── ui.py                  # interfaz Gradio
 │   └── engines/               # f5, xtts, elevenlabs, azure, openai, dummy + registro de plugins
 ├── voices/                    # voces de ejemplo: ana, carlos, emma, david
-├── examples/, guiones/        # guiones de ejemplo (guiones/ es también donde la app guarda los tuyos)
+├── examples/                  # guiones de ejemplo
+├── guiones/                   # tus guiones guardados desde la app (ignorados por git)
 ├── skill/podcast-tts/         # skill opcional de Claude Code
 ├── scripts/                   # check_env.py, install_skill.ps1, make_sample_voices.py, pruebas smoke
 ├── docs/                      # documentación (índice: docs/README.md)

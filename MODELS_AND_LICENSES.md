@@ -40,7 +40,7 @@ agree with it before using the `xtts` engine.
 | `f5-base` | [SWivid/F5-TTS](https://huggingface.co/SWivid/F5-TTS) (`F5TTS_v1_Base`) | `f5`, English | [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/) (weights; the [F5-TTS code](https://github.com/SWivid/F5-TTS) is MIT) | **No** | Yes (~1.3 GB) | Hugging Face cache |
 | `f5-spanish` | [jpgallegoar/F5-Spanish](https://huggingface.co/jpgallegoar/F5-Spanish) | `f5`, Spanish | [CC-BY-NC-4.0](https://creativecommons.org/licenses/by-nc/4.0/) | **No** | Yes (~1.3 GB) | Hugging Face cache |
 | `vocos` | [charactr/vocos-mel-24khz](https://huggingface.co/charactr/vocos-mel-24khz) | `f5` (vocoder, all languages) | MIT | Yes | Yes (~54 MB) | Hugging Face cache |
-| `xtts` | [coqui/XTTS-v2](https://huggingface.co/coqui/XTTS-v2) | `xtts` (17 languages, 58 built-in speakers) | [Coqui Public Model License (CPML)](https://coqui.ai/cpml) | **No** | Yes (~1.9 GB) | `%LOCALAPPDATA%\tts\tts_models--multilingual--multi-dataset--xtts_v2` |
+| `xtts` | [coqui/XTTS-v2](https://huggingface.co/coqui/XTTS-v2) | `xtts` (17 languages, 58 built-in speakers) | [Coqui Public Model License (CPML)](https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt) | **No** | Yes (~1.9 GB) | `%LOCALAPPDATA%\tts\tts_models--multilingual--multi-dataset--xtts_v2` |
 | `whisper` (optional) | [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) | `f5`, only to transcribe a voice clip that has no `ref.txt` | MIT | Yes | Only when needed (~1.6 GB) | Hugging Face cache |
 
 Why the F5 weights are non-commercial even though the F5-TTS code is MIT: the released
@@ -48,6 +48,11 @@ checkpoints were trained on data (the Emilia dataset, among others) whose licens
 commercial use, so the authors publish the weights under CC-BY-NC-4.0. The Spanish fine-tune
 inherits that restriction. Coqui, the company behind XTTS v2, has shut down and no longer sells
 commercial CPML licenses.
+
+The CPML also requires that anyone you give the XTTS v2 model **or its output** (for example, the
+audio files you generate) receives a copy of the CPML terms or a link to them
+(<https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt>), together with the notice that the model is licensed under the
+CPML. If you share audio made with `xtts`, include that link in the description or credits.
 
 ### Cache locations
 

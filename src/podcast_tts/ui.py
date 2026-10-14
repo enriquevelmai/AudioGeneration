@@ -146,7 +146,8 @@ HELP_MD = """
 | `[titulo:...]` | `[title:...]` | Metadato (no se sintetiza) | — |
 
 - *Front matter* opcional al principio: `title`, `lang`, `default_voice`, `engine`, `paragraph_pause`.
-- Las líneas que empiezan por `#` o `<!--` son comentarios.
+- Las líneas que empiezan por `#` y los bloques `<!-- ... -->` (también de varias líneas) son
+  comentarios.
 - Una línea vacía separa párrafos (pausa corta automática).
 - Rutas de música/sfx relativas a `examples/`, al directorio actual o al proyecto (o absolutas).
 """
