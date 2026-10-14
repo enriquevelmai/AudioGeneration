@@ -20,7 +20,7 @@
 
 ## Checklist
 
-- [ ] User-facing CLI and UI messages are in Spanish (castellano), like the rest of the program
+- [ ] User-facing CLI and UI messages are in English, with the Spanish translation (`PODCAST_TTS_LANG=es`) updated as well
 - [ ] Documentation updated (README.md and README.es.md, docs/) if behaviour changed
 - [ ] CHANGELOG.md updated under "Unreleased"
 - [ ] No API keys, `.env`, `output/`, `.cache/`, `.venv/` or model weights committed
