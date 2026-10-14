@@ -1,14 +1,14 @@
-"""Motor OpenAI Text-to-Speech (API REST de pago; solo stdlib, sin el SDK ``openai``).
+"""OpenAI Text-to-Speech engine (paid REST API; stdlib only, without the ``openai`` SDK).
 
-``POST https://api.openai.com/v1/audio/speech`` con ``Authorization: Bearer <clave>`` y
-``response_format=pcm`` (PCM 16 bit little-endian mono a 24 kHz).
+``POST https://api.openai.com/v1/audio/speech`` with ``Authorization: Bearer <key>`` and
+``response_format=pcm`` (16-bit little-endian mono PCM at 24 kHz).
 
-Voz: ``provider_voice_id`` = voz de OpenAI (``alloy``, ``ash``, ``coral``, ``echo``,
-``fable``, ``nova``, ``onyx``, ``sage``, ``shimmer``...). ``provider_options`` admite
-``model`` e ``instructions`` (tono/estilo; solo modelos ``gpt-4o-*-tts``).
+Voice: ``provider_voice_id`` = OpenAI voice (``alloy``, ``ash``, ``coral``, ``echo``,
+``fable``, ``nova``, ``onyx``, ``sage``, ``shimmer``...). ``provider_options`` accepts
+``model`` and ``instructions`` (tone/style; ``gpt-4o-*-tts`` models only).
 
-Clave: ``OPENAI_API_KEY`` (entorno o ``.env``). La política de uso de OpenAI exige
-informar a los oyentes de que la voz está generada por IA.
+Key: ``OPENAI_API_KEY`` (environment or ``.env``). OpenAI's usage policy requires
+telling listeners that the voice is AI-generated.
 """
 
 from __future__ import annotations
@@ -37,12 +37,12 @@ VOICES = ("alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "s
 
 
 class OpenAIEngine(CloudEngine):
-    """Motor OpenAI TTS.
+    """OpenAI TTS engine.
 
-    Parámetros (además de los de :class:`CloudEngine`):
-        model: modelo por defecto (``gpt-4o-mini-tts``; también ``tts-1``, ``tts-1-hd``).
-        instructions: instrucciones de estilo por defecto.
-        base_url: URL base de la API (p.ej. un proxy compatible).
+    Parameters (in addition to those of :class:`CloudEngine`):
+        model: default model (``gpt-4o-mini-tts``; also ``tts-1``, ``tts-1-hd``).
+        instructions: default style instructions.
+        base_url: base URL of the API (e.g. a compatible proxy).
     """
 
     name = "openai"
@@ -50,12 +50,12 @@ class OpenAIEngine(CloudEngine):
     key_env = "OPENAI_API_KEY"
     required_config = ("OPENAI_API_KEY",)
     license_info = LicenseInfo(
-        name="Términos de servicio de OpenAI",
+        name="OpenAI Terms of Service",
         url="https://openai.com/policies/",
         commercial_use=True,
-        notes="El audio generado es tuyo y puedes usarlo comercialmente según los términos "
-              "de OpenAI (API de pago). Su política de uso exige avisar de que la voz es "
-              "sintética.",
+        notes="The generated audio is yours and you may use it commercially under OpenAI's "
+              "terms (paid API). Their usage policy requires disclosing that the voice is "
+              "synthetic.",
     )
 
     def __init__(self, api_key: str | None = None, *, model: str = DEFAULT_MODEL,
@@ -72,7 +72,7 @@ class OpenAIEngine(CloudEngine):
 
     def build_request(self, text: str, voice: "Voice", lang: str, speed: float = 1.0
                       ) -> tuple[str, dict[str, Any]]:
-        """URL y cuerpo JSON de la petición (sin la clave)."""
+        """URL and JSON body of the request (without the key)."""
         opts = self._options(voice)
         body: dict[str, Any] = {
             "model": str(opts.get("model") or self.model),
@@ -84,7 +84,7 @@ class OpenAIEngine(CloudEngine):
         lo, hi = SPEED_RANGE
         clamped = min(max(speed, lo), hi)
         if clamped != speed:
-            log.warning("OpenAI admite speed entre %g y %g; se usa %g", lo, hi, clamped)
+            log.warning("OpenAI supports speed between %g and %g; using %g", lo, hi, clamped)
         if abs(clamped - 1.0) > 1e-6:
             body["speed"] = clamped
         instructions = opts.get("instructions") or self.instructions

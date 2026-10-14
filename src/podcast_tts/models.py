@@ -1,19 +1,19 @@
-"""Catálogo, estado y descarga de los modelos de los motores locales.
+"""Catalog, status and download of the local engines' models.
 
-Los modelos NO viven en el repositorio: se guardan en las cachés estándar.
+Models do NOT live in the repository: they are stored in the standard caches.
 
-- F5-TTS, F5-Spanish, Vocos y Whisper: caché de Hugging Face
-  (``HF_HUB_CACHE`` / ``HF_HOME``; por defecto ``~/.cache/huggingface/hub``),
-  exactamente donde los buscan ``cached_path("hf://...")`` y ``hf_hub_download``
-  al cargar el motor.
-- XTTS v2: carpeta de modelos de coqui-tts
-  (``<TTS_HOME o XDG_DATA_HOME o %LOCALAPPDATA%>/tts/tts_models--multilingual--multi-dataset--xtts_v2``),
-  la misma que usa ``TTS.utils.manage.ModelManager``. Se descarga del repo
-  ``coqui/XTTS-v2`` con ``huggingface_hub`` (mismos ficheros que bajaría coqui).
+- F5-TTS, F5-Spanish, Vocos and Whisper: Hugging Face cache
+  (``HF_HUB_CACHE`` / ``HF_HOME``; by default ``~/.cache/huggingface/hub``),
+  exactly where ``cached_path("hf://...")`` and ``hf_hub_download`` look for them
+  when the engine loads.
+- XTTS v2: coqui-tts models folder
+  (``<TTS_HOME or XDG_DATA_HOME or %LOCALAPPDATA%>/tts/tts_models--multilingual--multi-dataset--xtts_v2``),
+  the same one ``TTS.utils.manage.ModelManager`` uses. It is downloaded from the
+  ``coqui/XTTS-v2`` repo with ``huggingface_hub`` (the same files coqui would fetch).
 
-Solo depende de ``huggingface_hub`` (núcleo): funciona sin torch ni los motores.
-``download`` omite lo que ya está completo; ``update`` consulta siempre el
-repositorio y baja solo los ficheros que hayan cambiado (última revisión de ``main``).
+It only depends on ``huggingface_hub`` (core): it works without torch or the engines.
+``download`` skips what is already complete; ``update`` always queries the
+repository and fetches only the files that have changed (latest ``main`` revision).
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ __all__ = [
 
 
 class ModelsError(Exception):
-    """Error al resolver o descargar un modelo."""
+    """Error resolving or downloading a model."""
 
 
 @dataclass(frozen=True)
@@ -45,14 +45,14 @@ class ModelInfo:
     name: str
     title: str
     repo_id: str
-    files: tuple[str, ...]          # ficheros que deben existir para considerarlo descargado
+    files: tuple[str, ...]          # files that must exist for it to count as downloaded
     approx_size: str
     license: str
     commercial: bool
     used_by: str
-    storage: str = "hf"             # "hf" (caché de HF) o "coqui" (carpeta de coqui-tts)
-    patterns: tuple[str, ...] = ()  # allow_patterns para descargar (por defecto: files)
-    optional: bool = False          # no se incluye en "all"
+    storage: str = "hf"             # "hf" (HF cache) or "coqui" (coqui-tts folder)
+    patterns: tuple[str, ...] = ()  # allow_patterns for downloading (default: files)
+    optional: bool = False          # not included in "all"
     notes: str = ""
 
     @property
@@ -73,9 +73,9 @@ MODELS: tuple[ModelInfo, ...] = (
         repo_id="SWivid/F5-TTS",
         files=("F5TTS_v1_Base/model_1250000.safetensors",),
         approx_size="1.3 GB",
-        license="CC-BY-NC-4.0 (pesos; el código es MIT)",
+        license="CC-BY-NC-4.0 (weights; the code is MIT)",
         commercial=False,
-        used_by="f5 (inglés)",
+        used_by="f5 (English)",
     ),
     ModelInfo(
         name="f5-spanish",
@@ -85,17 +85,17 @@ MODELS: tuple[ModelInfo, ...] = (
         approx_size="1.3 GB",
         license="CC-BY-NC-4.0",
         commercial=False,
-        used_by="f5 (castellano)",
+        used_by="f5 (Spanish)",
     ),
     ModelInfo(
         name="vocos",
-        title="Vocos mel 24 kHz (vocoder de F5)",
+        title="Vocos mel 24 kHz (F5 vocoder)",
         repo_id="charactr/vocos-mel-24khz",
         files=("config.yaml", "pytorch_model.bin"),
         approx_size="54 MB",
         license="MIT",
         commercial=True,
-        used_by="f5 (todos los idiomas)",
+        used_by="f5 (all languages)",
     ),
     ModelInfo(
         name="xtts",
@@ -105,9 +105,9 @@ MODELS: tuple[ModelInfo, ...] = (
         approx_size="1.9 GB",
         license="Coqui Public Model License (CPML)",
         commercial=False,
-        used_by="xtts (17 idiomas, speakers integrados)",
+        used_by="xtts (17 languages, built-in speakers)",
         storage="coqui",
-        notes="Descargarlo implica aceptar la CPML (uso no comercial).",
+        notes="Downloading it means accepting the CPML (non-commercial use).",
     ),
     ModelInfo(
         name="whisper",
@@ -118,9 +118,9 @@ MODELS: tuple[ModelInfo, ...] = (
         approx_size="1.6 GB",
         license="MIT",
         commercial=True,
-        used_by="f5, solo si una voz no tiene ref.txt (transcripción automática)",
+        used_by="f5, only if a voice has no ref.txt (automatic transcription)",
         optional=True,
-        notes="Opcional: no se incluye en 'all'.",
+        notes="Optional: not included in 'all'.",
     ),
 )
 
@@ -136,12 +136,12 @@ def get_model(name: str) -> ModelInfo:
     key = (name or "").strip().lower()
     key = _ALIASES.get(key, key)
     if key not in _BY_NAME:
-        raise ModelsError(f"modelo desconocido '{name}' (válidos: {', '.join(_BY_NAME)}, all)")
+        raise ModelsError(f"unknown model '{name}' (valid: {', '.join(_BY_NAME)}, all)")
     return _BY_NAME[key]
 
 
 def resolve_names(names: list[str] | None) -> list[ModelInfo]:
-    """``None``/``[]``/``["all"]`` -> todos los no opcionales; si no, los indicados."""
+    """``None``/``[]``/``["all"]`` -> all non-optional models; otherwise the given ones."""
     if not names or any(n.strip().lower() == "all" for n in names):
         return [m for m in MODELS if not m.optional]
     out: list[ModelInfo] = []
@@ -153,12 +153,12 @@ def resolve_names(names: list[str] | None) -> list[ModelInfo]:
 
 
 # --------------------------------------------------------------------------- #
-# Rutas
+# Paths
 # --------------------------------------------------------------------------- #
 
 
 def _windows_local_appdata() -> Path:
-    try:  # lo mismo que hace coqui (trainer.io.get_user_data_dir)
+    try:  # same as coqui does (trainer.io.get_user_data_dir)
         import winreg
 
         key = winreg.OpenKey(
@@ -171,7 +171,7 @@ def _windows_local_appdata() -> Path:
 
 
 def coqui_models_dir() -> Path:
-    """Carpeta raíz de modelos de coqui-tts (equivale a ``get_user_data_dir("tts")``)."""
+    """Root folder of the coqui-tts models (equivalent to ``get_user_data_dir("tts")``)."""
     if os.environ.get("TTS_HOME"):
         base = Path(os.environ["TTS_HOME"]).expanduser()
     elif os.environ.get("XDG_DATA_HOME"):
@@ -196,14 +196,14 @@ def _hf_repo_dir(repo_id: str) -> Path:
 
 
 def model_dir(model: ModelInfo) -> Path:
-    """Carpeta donde vive (o vivirá) el modelo."""
+    """Folder where the model lives (or will live)."""
     if model.storage == "coqui":
         return coqui_models_dir() / XTTS_DIR_NAME
     return _hf_repo_dir(model.repo_id)
 
 
 # --------------------------------------------------------------------------- #
-# Estado
+# Status
 # --------------------------------------------------------------------------- #
 
 
@@ -215,7 +215,7 @@ def _dir_size(path: Path) -> int:
     for p in path.rglob("*"):
         try:
             if p.is_file():
-                st = p.stat()  # sigue symlinks (caché de HF en Linux)
+                st = p.stat()  # follows symlinks (HF cache on Linux)
                 ident = (st.st_dev, st.st_ino)
                 if ident in seen:
                     continue
@@ -227,7 +227,7 @@ def _dir_size(path: Path) -> int:
 
 
 def model_status(model: ModelInfo) -> dict[str, Any]:
-    """Estado local de un modelo, sin acceder a la red."""
+    """Local status of a model, without accessing the network."""
     missing: list[str] = []
     if model.storage == "coqui":
         base = model_dir(model)
@@ -261,7 +261,7 @@ def human_size(n: int) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Descarga
+# Download
 # --------------------------------------------------------------------------- #
 
 
@@ -271,36 +271,36 @@ def download(
     force_check: bool = False,
     log: Callable[[str], None] = print,
 ) -> Path:
-    """Descarga ``model`` (o comprueba si hay versión nueva con ``force_check``).
+    """Download ``model`` (or check for a newer version with ``force_check``).
 
-    Sin ``force_check`` no toca la red si el modelo ya está completo.
-    Devuelve la carpeta del modelo.
+    Without ``force_check`` it does not touch the network if the model is already complete.
+    Returns the model folder.
     """
     if not force_check and model_status(model)["downloaded"]:
-        log(f"  {model.name}: ya descargado en {model_dir(model)}")
+        log(f"  {model.name}: already downloaded in {model_dir(model)}")
         return model_dir(model)
     try:
         from huggingface_hub import snapshot_download
-    except ImportError as exc:  # pragma: no cover - es dependencia del núcleo
-        raise ModelsError(f"falta huggingface_hub ({exc}); reinstala con bats\\install.bat") from exc
+    except ImportError as exc:  # pragma: no cover - it is a core dependency
+        raise ModelsError(f"huggingface_hub is missing ({exc}); reinstall with bats\\install.bat") from exc
 
-    action = "comprobando actualizaciones de" if force_check else "descargando"
+    action = "checking for updates to" if force_check else "downloading"
     log(f"  {model.name}: {action} {model.repo_id} ({model.approx_size}) ...")
     kwargs: dict[str, Any] = {"repo_id": model.repo_id, "allow_patterns": model.allow_patterns}
     if model.storage == "coqui":
-        # Misma carpeta y mismos ficheros que ModelManager de coqui-tts: al cargar XTTS
-        # coqui ve hash.md5 correcto y no vuelve a descargar.
+        # Same folder and same files as coqui-tts's ModelManager: when loading XTTS
+        # coqui sees a correct hash.md5 and does not download again.
         target = model_dir(model)
         target.mkdir(parents=True, exist_ok=True)
         kwargs["local_dir"] = str(target)
     try:
         path = Path(snapshot_download(**kwargs))
-    except Exception as exc:  # red, permisos, repo...
-        raise ModelsError(f"no se pudo descargar {model.name} desde {model.url}: {exc}") from exc
+    except Exception as exc:  # network, permissions, repo...
+        raise ModelsError(f"could not download {model.name} from {model.url}: {exc}") from exc
     status = model_status(model)
     if not status["downloaded"]:
         raise ModelsError(
-            f"{model.name}: descarga incompleta, faltan {', '.join(status['missing'])} en {path}"
+            f"{model.name}: incomplete download, missing {', '.join(status['missing'])} in {path}"
         )
-    log(f"  {model.name}: OK ({human_size(status['size_bytes'])}) en {status['path']}")
+    log(f"  {model.name}: OK ({human_size(status['size_bytes'])}) in {status['path']}")
     return Path(status["path"])

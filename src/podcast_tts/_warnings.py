@@ -1,7 +1,7 @@
-"""Filtros de avisos de terceros que no aportan nada al usuario.
+"""Filters for third-party warnings that are of no use to the user.
 
-Se aplican al importar :mod:`podcast_tts` y otra vez dentro de los bloques
-``warnings.catch_warnings`` de la UI (que reinician los filtros).
+They are applied when :mod:`podcast_tts` is imported and again inside the UI's
+``warnings.catch_warnings`` blocks (which reset the filters).
 """
 
 from __future__ import annotations
@@ -10,17 +10,17 @@ import warnings
 
 __all__ = ["NOISY_WARNINGS", "silence_noisy_warnings"]
 
-#: (expresión regular del mensaje, categoría)
+#: (message regular expression, category)
 NOISY_WARNINGS: tuple[tuple[str, type[Warning]], ...] = (
-    # torchaudio 2.8 avisa en cada carga de audio de que en 2.9 cambiará a torchcodec
-    # (no subimos a 2.9: ver docs/DECISIONS.md).
+    # torchaudio 2.8 warns on every audio load that 2.9 will switch to torchcodec
+    # (we do not upgrade to 2.9: see docs/DECISIONS.md).
     (r"In 2\.9, this function's implementation", Warning),
-    # starlette renombró HTTP_422_UNPROCESSABLE_ENTITY; lo usa gradio internamente.
+    # starlette renamed HTTP_422_UNPROCESSABLE_ENTITY; gradio uses it internally.
     (r".*HTTP_422_UNPROCESSABLE_ENTITY", Warning),
 )
 
 
 def silence_noisy_warnings() -> None:
-    """Ignora los avisos de :data:`NOISY_WARNINGS` (idempotente en la práctica)."""
+    """Ignore the warnings in :data:`NOISY_WARNINGS` (idempotent in practice)."""
     for message, category in NOISY_WARNINGS:
         warnings.filterwarnings("ignore", message=message, category=category)

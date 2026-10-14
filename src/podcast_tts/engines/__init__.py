@@ -1,19 +1,19 @@
-"""Registro de motores TTS (integrados y de terceros) con carga perezosa.
+"""Registry of TTS engines (built-in and third-party) with lazy loading.
 
-- Integrados: ``f5``, ``xtts``, ``dummy`` (locales) y ``elevenlabs``, ``azure``,
-  ``openai`` (en la nube, de pago).
-- De terceros: paquetes que declaran un *entry point* en el grupo
-  ``podcast_tts.engines`` (ver ``docs/ENGINES_PLUGINS.md``)::
+- Built-in: ``f5``, ``xtts``, ``dummy`` (local) and ``elevenlabs``, ``azure``,
+  ``openai`` (cloud, paid).
+- Third-party: packages that declare an *entry point* in the
+  ``podcast_tts.engines`` group (see ``docs/ENGINES_PLUGINS.md``)::
 
       [project.entry-points."podcast_tts.engines"]
-      miengine = "podcast_tts_miengine:MiEngine"
+      myengine = "podcast_tts_myengine:MyEngine"
 
-- En tiempo de ejecución: :func:`register_engine`.
+- At runtime: :func:`register_engine`.
 
-``get_engine("f5")`` importa ``podcast_tts.engines.f5`` solo cuando se pide; importar
-este paquete NO importa torch ni ningún modelo. Las instancias se cachean (una por
-proceso). Los nombres válidos se obtienen con :func:`engine_names` (``ENGINE_NAMES``
-se calcula al leerlo e incluye los motores registrados).
+``get_engine("f5")`` imports ``podcast_tts.engines.f5`` only when requested; importing
+this package does NOT import torch or any model. Instances are cached (one per
+process). The valid names come from :func:`engine_names` (``ENGINE_NAMES``
+is computed when read and includes registered engines).
 """
 
 from __future__ import annotations
@@ -57,22 +57,22 @@ ENTRY_POINT_GROUP = "podcast_tts.engines"
 
 @dataclass
 class EngineSpec:
-    """Entrada del registro.
+    """Registry entry.
 
-    ``target`` es ``"modulo:Clase"``, la propia clase/fábrica o un ``EntryPoint``.
-    ``package`` es el paquete del que depende (para comprobar si está instalado sin
-    importarlo). ``source`` es ``"integrado"``, ``"plugin (<distribución>)"`` o ``"registrado"``.
+    ``target`` is ``"module:Class"``, the class/factory itself or an ``EntryPoint``.
+    ``package`` is the package it depends on (to check whether it is installed without
+    importing it). ``source`` is ``"built-in"``, ``"plugin (<distribution>)"`` or ``"registered"``.
     """
 
     name: str
     target: Any
     package: str | None = None
-    source: str = "integrado"
+    source: str = "built-in"
     _cls: Any = None
     _error: str | None = None
 
     def load(self) -> Any:
-        """Importa y devuelve la clase (o fábrica) del motor. Lanza :class:`EngineError`."""
+        """Import and return the engine class (or factory). Raises :class:`EngineError`."""
         if self._cls is not None:
             return self._cls
         try:
@@ -83,11 +83,11 @@ class EngineSpec:
                 obj = self.target.load()
             else:
                 obj = self.target
-        except Exception as exc:  # ImportError, AttributeError, errores del plugin...
+        except Exception as exc:  # ImportError, AttributeError, plugin errors...
             self._error = f"{type(exc).__name__}: {exc}"
             raise EngineError(
-                f"no se pudo cargar el motor '{self.name}' ({self.source}): {exc}. "
-                "¿Están instaladas sus dependencias?"
+                f"could not load engine '{self.name}' ({self.source}): {exc}. "
+                "Are its dependencies installed?"
             ) from exc
         self._cls = obj
         self._error = None
@@ -104,8 +104,8 @@ _BUILTINS: dict[str, tuple[str, str | None]] = {
 }
 
 _lock = threading.RLock()
-_registry: dict[str, EngineSpec] | None = None  # se construye en el primer uso
-_manual: dict[str, EngineSpec] = {}  # registrados con register_engine
+_registry: dict[str, EngineSpec] | None = None  # built on first use
+_manual: dict[str, EngineSpec] = {}  # registered with register_engine
 _instances: dict[str, TTSEngine] = {}
 
 
@@ -114,12 +114,12 @@ def _norm(name: str) -> str:
 
 
 def _discover_plugins() -> dict[str, EngineSpec]:
-    """Lee los entry points del grupo ``podcast_tts.engines`` (sin importarlos)."""
+    """Read the entry points of the ``podcast_tts.engines`` group (without importing them)."""
     found: dict[str, EngineSpec] = {}
     try:
         eps = metadata.entry_points(group=ENTRY_POINT_GROUP)
-    except Exception as exc:  # metadatos corruptos de algún paquete
-        log.warning("No se pudieron leer los plugins de motores: %s", exc)
+    except Exception as exc:  # corrupt metadata in some package
+        log.warning("Could not read the engine plugins: %s", exc)
         return found
     for ep in eps:
         name = _norm(ep.name)
@@ -128,11 +128,11 @@ def _discover_plugins() -> dict[str, EngineSpec]:
         dist = getattr(getattr(ep, "dist", None), "name", None)
         source = f"plugin ({dist})" if dist else "plugin"
         if name in _BUILTINS:
-            log.warning("El plugin '%s' (%s) usa el nombre de un motor integrado; se ignora.",
+            log.warning("Plugin '%s' (%s) uses the name of a built-in engine; ignoring it.",
                         name, ep.value)
             continue
         if name in found:
-            log.warning("Hay dos plugins con el nombre '%s'; se usa el primero.", name)
+            log.warning("There are two plugins named '%s'; using the first one.", name)
             continue
         found[name] = EngineSpec(name=name, target=ep, source=source)
     return found
@@ -150,7 +150,7 @@ def _get_registry() -> dict[str, EngineSpec]:
 
 
 def refresh_engines() -> tuple[str, ...]:
-    """Vuelve a buscar plugins (p.ej. tras instalar uno) y vacía la caché de instancias."""
+    """Look for plugins again (e.g. after installing one) and clear the instance cache."""
     global _registry
     with _lock:
         _registry = None
@@ -160,31 +160,31 @@ def refresh_engines() -> tuple[str, ...]:
 
 def register_engine(name: str, target: Any, *, package: str | None = None,
                     replace: bool = False) -> None:
-    """Registra un motor en tiempo de ejecución.
+    """Register an engine at runtime.
 
-    ``target`` puede ser ``"modulo:Clase"`` o la clase (o fábrica) del motor.
-    No se pueden reemplazar los motores integrados.
+    ``target`` can be ``"module:Class"`` or the engine class (or factory).
+    Built-in engines cannot be replaced.
     """
     key = _norm(name)
     if not key or not key.replace("_", "").replace("-", "").isalnum():
-        raise EngineError(f"nombre de motor inválido {name!r}")
+        raise EngineError(f"invalid engine name {name!r}")
     if key in _BUILTINS:
-        raise EngineError(f"'{key}' es un motor integrado y no se puede reemplazar")
+        raise EngineError(f"'{key}' is a built-in engine and cannot be replaced")
     reg = _get_registry()
     with _lock:
         if key in reg and not replace:
-            raise EngineError(f"ya hay un motor llamado '{key}' (usa replace=True)")
-        spec = EngineSpec(name=key, target=target, package=package, source="registrado")
+            raise EngineError(f"there is already an engine named '{key}' (use replace=True)")
+        spec = EngineSpec(name=key, target=target, package=package, source="registered")
         _manual[key] = spec
         reg[key] = spec
         _instances.pop(key, None)
 
 
 def unregister_engine(name: str) -> None:
-    """Quita un motor registrado con :func:`register_engine` (o un plugin) del registro."""
+    """Remove an engine registered with :func:`register_engine` (or a plugin) from the registry."""
     key = _norm(name)
     if key in _BUILTINS:
-        raise EngineError(f"'{key}' es un motor integrado y no se puede quitar")
+        raise EngineError(f"'{key}' is a built-in engine and cannot be removed")
     reg = _get_registry()
     with _lock:
         _manual.pop(key, None)
@@ -193,13 +193,13 @@ def unregister_engine(name: str) -> None:
 
 
 def engine_names() -> tuple[str, ...]:
-    """Nombres de todos los motores: integrados primero y después los de terceros (ordenados)."""
+    """Names of all engines: built-in first, then third-party ones (sorted)."""
     reg = _get_registry()
     extra = sorted(n for n in reg if n not in _BUILTINS)
     return tuple(n for n in _BUILTINS if n in reg) + tuple(extra)
 
 
-def __getattr__(attr: str) -> Any:  # PEP 562: ENGINE_NAMES dinámico
+def __getattr__(attr: str) -> Any:  # PEP 562: dynamic ENGINE_NAMES
     if attr == "ENGINE_NAMES":
         return engine_names()
     raise AttributeError(f"module {__name__!r} has no attribute {attr!r}")
@@ -209,23 +209,23 @@ def _spec(name: str) -> EngineSpec:
     key = _norm(name)
     reg = _get_registry()
     if key not in reg:
-        raise EngineError(f"motor desconocido '{name}' (válidos: {', '.join(engine_names())})")
+        raise EngineError(f"unknown engine '{name}' (valid: {', '.join(engine_names())})")
     return reg[key]
 
 
 def engine_class(name: str) -> Any:
-    """Clase (o fábrica) del motor ``name``, importándola si hace falta."""
+    """Class (or factory) of engine ``name``, importing it if needed."""
     return _spec(name).load()
 
 
 def engine_kind(name: str) -> str:
-    """``"local"`` o ``"cloud"`` (por defecto ``"local"`` si el motor no lo declara)."""
+    """``"local"`` or ``"cloud"`` (``"local"`` by default if the engine does not declare it)."""
     kind = getattr(engine_class(name), "kind", "local")
     return kind if kind in ("local", "cloud") else "local"
 
 
 def engine_license(name: str) -> LicenseInfo:
-    """:class:`LicenseInfo` del motor (o :data:`UNKNOWN_LICENSE` si no la declara)."""
+    """The engine's :class:`LicenseInfo` (or :data:`UNKNOWN_LICENSE` if it does not declare one)."""
     info = getattr(engine_class(name), "license_info", None)
     return info if isinstance(info, LicenseInfo) else UNKNOWN_LICENSE
 
@@ -236,16 +236,16 @@ def _required_config(cls: Any) -> tuple[str, ...]:
 
 
 def is_configured(name: str) -> bool:
-    """``True`` si están definidas todas las claves que necesita el motor (entorno o ``.env``)."""
+    """``True`` if every key the engine needs is defined (environment or ``.env``)."""
     from ..config import get_key
 
     return all(get_key(k) for k in _required_config(engine_class(name)))
 
 
 def get_engine(name: str, **kwargs: Any) -> TTSEngine:
-    """Devuelve (y cachea) la instancia del motor ``name``.
+    """Return (and cache) the instance of engine ``name``.
 
-    Si se pasan ``kwargs`` se crea una instancia nueva sin cachear.
+    If ``kwargs`` are given, a new uncached instance is created.
     """
     key = _norm(name)
     spec = _spec(key)
@@ -257,11 +257,11 @@ def get_engine(name: str, **kwargs: Any) -> TTSEngine:
     except EngineError:
         raise
     except Exception as exc:
-        raise EngineError(f"no se pudo crear el motor '{key}': {exc}") from exc
+        raise EngineError(f"could not create engine '{key}': {exc}") from exc
     if not callable(getattr(engine, "synthesize", None)) or not hasattr(engine, "sample_rate"):
         raise EngineError(
-            f"el motor '{key}' ({spec.source}) no implementa el protocolo TTSEngine "
-            "(faltan synthesize() o sample_rate)"
+            f"engine '{key}' ({spec.source}) does not implement the TTSEngine protocol "
+            "(synthesize() or sample_rate is missing)"
         )
     if not kwargs:
         _instances[key] = engine
@@ -269,19 +269,19 @@ def get_engine(name: str, **kwargs: Any) -> TTSEngine:
 
 
 def clear_engine_cache() -> None:
-    """Olvida las instancias cacheadas (libera modelos)."""
+    """Forget the cached instances (frees models)."""
     _instances.clear()
 
 
 def _cuda_info() -> tuple[bool, str | None]:
     try:
-        import torch  # perezoso: solo si se pide engine_info(check_cuda=True)
+        import torch  # lazy: only if engine_info(check_cuda=True) is requested
     except ImportError:
         return False, None
     try:
         if torch.cuda.is_available():
             return True, torch.cuda.get_device_name(0)
-    except Exception:  # driver roto, etc.
+    except Exception:  # broken driver, etc.
         pass
     return False, None
 
@@ -294,7 +294,7 @@ def _is_loaded(name: str, spec: EngineSpec, kind: str) -> bool:
         module = sys.modules.get("podcast_tts.engines.xtts")
         return bool(module is not None and getattr(module, "is_loaded", lambda: False)())
     if name == "dummy" or kind == "cloud":
-        return True  # no hay modelo que cargar
+        return True  # there is no model to load
     fn = getattr(spec._cls, "is_loaded", None)
     if callable(fn):
         try:
@@ -305,23 +305,23 @@ def _is_loaded(name: str, spec: EngineSpec, kind: str) -> bool:
 
 
 def engine_info(check_cuda: bool = True) -> dict[str, dict[str, Any]]:
-    """Disponibilidad, tipo y licencia de cada motor, sin cargar modelos (pensado para la UI/CLI).
+    """Availability, kind and license of each engine, without loading models (for the UI/CLI).
 
-    Devuelve ``{nombre: {...}}`` con las claves:
+    Returns ``{name: {...}}`` with the keys:
 
     - ``importable`` (bool), ``error`` (str | None), ``loaded`` (bool),
-      ``cuda`` (bool), ``device`` (str | None): como antes.
-    - ``kind``: ``"local"`` o ``"cloud"``.
-    - ``license``, ``license_url``, ``license_notes``: licencia del modelo/servicio.
-    - ``commercial_use``: ``True``, ``False`` o ``"depende del plan"``.
-    - ``configured``: ``True`` si están todas las claves que necesita (los locales, siempre).
-    - ``required_config``: lista de variables necesarias.
-    - ``source``: ``"integrado"``, ``"plugin (...)"`` o ``"registrado"``.
+      ``cuda`` (bool), ``device`` (str | None).
+    - ``kind``: ``"local"`` or ``"cloud"``.
+    - ``license``, ``license_url``, ``license_notes``: license of the model/service.
+    - ``commercial_use``: ``True``, ``False`` or ``"depends on plan"``.
+    - ``configured``: ``True`` if every key it needs is present (always for local engines).
+    - ``required_config``: list of required variables.
+    - ``source``: ``"built-in"``, ``"plugin (...)"`` or ``"registered"``.
 
-    Para los motores integrados solo comprueba que su paquete está instalado
-    (``find_spec``); los módulos de los motores se importan para leer sus metadatos,
-    pero no importan torch. ``torch`` solo se importa (perezosamente) si
-    ``check_cuda`` es ``True`` y hay algún motor local que no sea ``dummy``.
+    For built-in engines it only checks that their package is installed
+    (``find_spec``); the engine modules are imported to read their metadata,
+    but they do not import torch. ``torch`` is only imported (lazily) if
+    ``check_cuda`` is ``True`` and there is some local engine other than ``dummy``.
     """
     from ..config import get_key
 
@@ -339,7 +339,7 @@ def engine_info(check_cuda: bool = True) -> dict[str, dict[str, Any]]:
             except (ImportError, ValueError) as exc:
                 importable, error = False, str(exc)
             if not importable and error is None:
-                error = f"no está instalado el paquete '{spec.package}'"
+                error = f"package '{spec.package}' is not installed"
         cls = None
         try:
             cls = spec.load()

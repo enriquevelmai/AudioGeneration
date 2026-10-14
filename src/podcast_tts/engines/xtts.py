@@ -1,11 +1,11 @@
-"""Motor XTTS v2 (Coqui, fork idiap ``coqui-tts``): speaker integrado o clonación con ref.wav.
+"""XTTS v2 engine (Coqui, idiap ``coqui-tts`` fork): built-in speaker or cloning from ref.wav.
 
-- Si la voz define ``xtts_speaker`` se usa ese speaker integrado (58 disponibles,
-  ver :data:`podcast_tts.voices.XTTS_BUILTIN_SPEAKERS`); si no, se clona con
+- If the voice defines ``xtts_speaker``, that built-in speaker is used (58 available,
+  see :data:`podcast_tts.voices.XTTS_BUILTIN_SPEAKERS`); otherwise it is cloned from
   ``voice.ref_wav`` (6-15 s).
-- 17 idiomas (:data:`XTTS_LANGUAGES`); "zh" se mapea a "zh-cn".
-- El modelo (~1.8 GB, licencia CPML no comercial) se descarga la primera vez a
-  ``%LOCALAPPDATA%\\tts`` y se carga de forma perezosa una sola vez por proceso.
+- 17 languages (:data:`XTTS_LANGUAGES`); "zh" is mapped to "zh-cn".
+- The model (~1.8 GB, non-commercial CPML license) is downloaded the first time to
+  ``%LOCALAPPDATA%\\tts`` and loaded lazily only once per process.
 """
 
 from __future__ import annotations
@@ -41,12 +41,12 @@ _lock = threading.Lock()
 
 
 def is_loaded() -> bool:
-    """``True`` si el modelo XTTS ya está cargado en este proceso."""
+    """``True`` if the XTTS model is already loaded in this process."""
     return _model is not None
 
 
 def normalize_lang(lang: str) -> str:
-    """Normaliza el código de idioma para XTTS o lanza :class:`EngineError`."""
+    """Normalize the language code for XTTS or raise :class:`EngineError`."""
     code = (lang or "").strip().lower().replace("_", "-")
     code = _LANG_ALIASES.get(code, code)
     if code not in XTTS_LANGUAGES:
@@ -54,7 +54,7 @@ def normalize_lang(lang: str) -> str:
         code = _LANG_ALIASES.get(base, base)
     if code not in XTTS_LANGUAGES:
         raise EngineError(
-            f"XTTS v2 no admite el idioma '{lang}'. Idiomas válidos: {', '.join(XTTS_LANGUAGES)}"
+            f"XTTS v2 does not support language '{lang}'. Valid languages: {', '.join(XTTS_LANGUAGES)}"
         )
     return code
 
@@ -64,7 +64,7 @@ def _load_model() -> Any:
     with _lock:
         if _model is not None:
             return _model
-        # Acepta la licencia CPML sin prompt (si no, input() cuelga procesos no interactivos).
+        # Accept the CPML license without a prompt (otherwise input() hangs non-interactive processes).
         os.environ.setdefault("COQUI_TOS_AGREED", "1")
         t0 = time.perf_counter()
         try:
@@ -75,20 +75,20 @@ def _load_model() -> Any:
             device = select_device("XTTS v2")
             _model = TTS(MODEL_NAME, progress_bar=False).to(device)
         except ImportError as exc:
-            raise EngineError(f"coqui-tts no está instalado ({exc}). Ejecuta bats/install.bat.") from exc
+            raise EngineError(f"coqui-tts is not installed ({exc}). Run bats/install.bat.") from exc
         except Exception as exc:
-            raise EngineError(f"no se pudo cargar el modelo XTTS v2: {exc}") from exc
-        log.info("XTTS v2 cargado en %.1f s", time.perf_counter() - t0)
+            raise EngineError(f"could not load the XTTS v2 model: {exc}") from exc
+        log.info("XTTS v2 loaded in %.1f s", time.perf_counter() - t0)
         return _model
 
 
 class XTTSEngine:
-    """Motor XTTS v2.
+    """XTTS v2 engine.
 
-    Parámetros:
-        temperature: aleatoriedad del muestreo (0.75 por defecto en XTTS; ``None`` = por defecto).
-        empty_cache: llama a ``torch.cuda.empty_cache()`` tras cada síntesis.
-        preload: carga el modelo ya en el constructor.
+    Parameters:
+        temperature: sampling randomness (0.75 by default in XTTS; ``None`` = default).
+        empty_cache: call ``torch.cuda.empty_cache()`` after each synthesis.
+        preload: load the model right away in the constructor.
     """
 
     name = "xtts"
@@ -96,8 +96,8 @@ class XTTSEngine:
         name="Coqui Public Model License 1.0.0",
         url="https://huggingface.co/coqui/XTTS-v2/blob/main/LICENSE.txt",
         commercial_use=False,
-        notes="Pesos de XTTS v2: solo uso no comercial (CPML). Coqui ya no vende licencias "
-              "comerciales. El código de coqui-tts es MPL-2.0, pero los pesos no.",
+        notes="XTTS v2 weights: non-commercial use only (CPML). Coqui no longer sells commercial "
+              "licenses. The coqui-tts code is MPL-2.0, but the weights are not.",
     )
 
     def __init__(
@@ -117,14 +117,14 @@ class XTTSEngine:
 
     @property
     def cache_tag(self) -> str:
-        """Modelo, versión de coqui-tts y temperatura."""
+        """Model, coqui-tts version and temperature."""
         from .base import package_version
 
         return f"xtts|{MODEL_NAME}|coqui-tts={package_version('coqui-tts')}|temp={self.temperature}"
 
     @staticmethod
     def speakers() -> list[str]:
-        """Speakers integrados (carga el modelo)."""
+        """Built-in speakers (loads the model)."""
         return list(_load_model().speakers or [])
 
     def synthesize(self, text: str, voice: "Voice", lang: str, speed: float = 1.0) -> np.ndarray:
@@ -137,7 +137,7 @@ class XTTSEngine:
         if not speaker:
             if not voice.has_ref:
                 raise EngineError(
-                    f"la voz '{voice.name}' no tiene ni xtts_speaker ni clip de referencia "
+                    f"voice '{voice.name}' has neither an xtts_speaker nor a reference clip "
                     f"({voice.ref_wav})."
                 )
             speaker_wav = str(voice.ref_wav)
@@ -146,8 +146,8 @@ class XTTSEngine:
         model = _load_model()
         if speaker and model.speakers and speaker not in model.speakers:
             raise EngineError(
-                f"el speaker integrado '{speaker}' de la voz '{voice.name}' no existe en XTTS v2 "
-                "(ver podcast_tts.voices.list_xtts_speakers())."
+                f"built-in speaker '{speaker}' of voice '{voice.name}' does not exist in XTTS v2 "
+                "(see podcast_tts.voices.list_xtts_speakers())."
             )
         kwargs: dict[str, Any] = {"speed": speed}
         if self.temperature is not None:
@@ -170,7 +170,7 @@ class XTTSEngine:
         except Exception as exc:
             who = f"speaker '{speaker}'" if speaker else f"clip {speaker_wav}"
             raise EngineError(
-                f"XTTS v2 falló al sintetizar con la voz '{voice.name}' ({who}, {language}): {exc}"
+                f"XTTS v2 failed to synthesize with voice '{voice.name}' ({who}, {language}): {exc}"
             ) from exc
         finally:
             if self.empty_cache and torch.cuda.is_available():
@@ -179,5 +179,5 @@ class XTTSEngine:
 
         audio = np.asarray(wav, dtype=np.float32).reshape(-1)
         if audio.size == 0:
-            raise EngineError(f"XTTS v2 devolvió audio vacío para: {text[:60]!r}")
+            raise EngineError(f"XTTS v2 returned empty audio for: {text[:60]!r}")
         return np.clip(audio, -1.0, 1.0)

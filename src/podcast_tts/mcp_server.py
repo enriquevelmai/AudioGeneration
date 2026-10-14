@@ -1,25 +1,25 @@
-"""Servidor MCP (Model Context Protocol) de podcast_tts, por stdio.
+"""podcast_tts MCP (Model Context Protocol) server, over stdio.
 
-Expone la herramienta a cualquier asistente de IA compatible con MCP (Claude Desktop,
-Claude Code, Cursor, VS Code...) para que pueda escribir un guion, validarlo y generar el
-podcast completo en local. Arranque::
+Exposes the tool to any MCP-compatible AI assistant (Claude Desktop, Claude Code, Cursor,
+VS Code...) so it can write a script, validate it and generate the complete podcast locally.
+Start it with::
 
-    podcast-tts mcp                 # o: python -m podcast_tts mcp   |   podcast-tts-mcp
+    podcast-tts mcp                 # or: python -m podcast_tts mcp   |   podcast-tts-mcp
 
-Requiere el extra ``mcp`` (``uv sync --extra mcp``). Referencia: ``docs/MCP.md``.
+Requires the ``mcp`` extra (``uv sync --extra mcp``). Reference: ``docs/MCP.md``.
 
-Reglas de diseño:
+Design rules:
 
-- stdout es SOLO del protocolo JSON-RPC. Al arrancar se duplica el descriptor 1 para el
-  transporte y el descriptor 1 del proceso pasa a apuntar a stderr, de modo que cualquier
-  ``print`` de torch, f5-tts, gradio, ffmpeg... acaba en stderr. stdin se sustituye por
-  ``NUL`` para que ninguna biblioteca pueda consumir mensajes del protocolo con ``input()``.
-- La síntesis se ejecuta en un hilo (una a la vez: hay una sola GPU) y envía notificaciones de
-  progreso por segmento. Si tarda más que ``wait_seconds`` (45 s por defecto, para no chocar con
-  los *timeouts* de los clientes), la herramienta devuelve un ``job_id`` y el trabajo sigue en
-  segundo plano; ``get_generation_status`` espera de nuevo y devuelve el resultado.
-- Salida en ``<proyecto>/output`` o en ``$PODCAST_TTS_OUTPUT_DIR``. Los nombres de salida se
-  validan (sin rutas ni ``..``). Las rutas de música/sfx siguen las reglas de la UI.
+- stdout belongs ONLY to the JSON-RPC protocol. On startup file descriptor 1 is duplicated for
+  the transport and the process's descriptor 1 is pointed at stderr, so any ``print`` from
+  torch, f5-tts, gradio, ffmpeg... ends up on stderr. stdin is replaced with ``NUL`` so no
+  library can consume protocol messages through ``input()``.
+- Synthesis runs in a thread (one at a time: there is a single GPU) and sends a progress
+  notification per segment. If it takes longer than ``wait_seconds`` (45 s by default, to stay
+  below client *timeouts*), the tool returns a ``job_id`` and the job keeps running in the
+  background; ``get_generation_status`` waits again and returns the result.
+- Output goes to ``<project>/output`` or ``$PODCAST_TTS_OUTPUT_DIR``. Output names are
+  validated (no paths or ``..``). Music/sfx paths follow the same rules as the UI.
 """
 
 import io
@@ -45,7 +45,7 @@ DEFAULT_WAIT_SECONDS = 45.0
 MAX_WAIT_SECONDS = 600.0
 MAX_SCRIPT_CHARS = 200_000
 MAX_SYNTH_TEXT_CHARS = 5_000
-try:  # misma lista que el ensamblador (rutas de música/sfx permitidas)
+try:  # same list as the assembler (allowed music/sfx paths)
     from .assembler import AUDIO_EXTENSIONS
 except ImportError:  # pragma: no cover
     AUDIO_EXTENSIONS = frozenset({".mp3", ".wav", ".ogg", ".flac", ".m4a"})
@@ -56,16 +56,16 @@ _RESERVED = {"con", "prn", "aux", "nul", *(f"com{i}" for i in range(1, 10)),
 
 
 # --------------------------------------------------------------------------- #
-# stdio limpio
+# Clean stdio
 # --------------------------------------------------------------------------- #
 
 
 def protect_stdio() -> tuple[io.TextIOWrapper, io.TextIOWrapper]:
-    """Reserva stdin/stdout reales para el protocolo y desvía los del proceso.
+    """Reserve the real stdin/stdout for the protocol and redirect the process's ones.
 
-    Devuelve ``(stdin_protocolo, stdout_protocolo)`` como flujos de texto UTF-8. Después de
-    llamarla, el descriptor 1 apunta a stderr (``print`` y subprocesos escriben en stderr) y el
-    0 a ``NUL`` (``input()`` recibe EOF).
+    Returns ``(protocol_stdin, protocol_stdout)`` as UTF-8 text streams. After calling it,
+    descriptor 1 points to stderr (``print`` and subprocesses write to stderr) and descriptor 0
+    to ``NUL`` (``input()`` gets EOF).
     """
     sys.stdout.flush()
     proto_out_fd = os.dup(1)
@@ -74,9 +74,9 @@ def protect_stdio() -> tuple[io.TextIOWrapper, io.TextIOWrapper]:
     null_fd = os.open(os.devnull, os.O_RDONLY)
     os.dup2(null_fd, 0)
     os.close(null_fd)
-    # Los objetos de Python también: print() -> stderr; input() -> EOF.
+    # The Python objects too: print() -> stderr; input() -> EOF.
     sys.stdout = sys.stderr
-    sys.stdin = open(os.devnull, encoding="utf-8")  # noqa: SIM115 - vive todo el proceso
+    sys.stdin = open(os.devnull, encoding="utf-8")  # noqa: SIM115 - lives for the whole process
     proto_out = io.TextIOWrapper(os.fdopen(proto_out_fd, "wb", buffering=0), encoding="utf-8",
                                  newline="\n", write_through=True)
     proto_in = io.TextIOWrapper(os.fdopen(proto_in_fd, "rb", buffering=0), encoding="utf-8",
@@ -87,13 +87,13 @@ def protect_stdio() -> tuple[io.TextIOWrapper, io.TextIOWrapper]:
 def _setup_logging() -> None:
     logging.basicConfig(stream=sys.stderr, level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    logging.getLogger("mcp").setLevel(logging.WARNING)  # sin "Processing request..." por llamada
-    warnings.formatwarning = lambda msg, cat, *a, **k: f"Aviso: {msg}\n"
+    logging.getLogger("mcp").setLevel(logging.WARNING)  # no "Processing request..." per call
+    warnings.formatwarning = lambda msg, cat, *a, **k: f"Warning: {msg}\n"
     os.environ.setdefault("PYTHONUTF8", "1")
 
 
 # --------------------------------------------------------------------------- #
-# Configuración
+# Configuration
 # --------------------------------------------------------------------------- #
 
 
@@ -105,16 +105,16 @@ def _project_root() -> Path:
 
 @dataclass
 class ServerConfig:
-    """Rutas del servidor (se pueden cambiar en los tests)."""
+    """Server paths (tests can override them)."""
 
     output_dir: Path = field(default_factory=lambda: Path(
         os.environ.get("PODCAST_TTS_OUTPUT_DIR") or _project_root() / "output"))
-    voices_dir: Path | None = None  # None = default_voices_dir() (respeta PODCAST_TTS_VOICES_DIR)
+    voices_dir: Path | None = None  # None = default_voices_dir() (honours PODCAST_TTS_VOICES_DIR)
     scripts_dir: Path = field(default_factory=lambda: Path(
         os.environ.get("PODCAST_TTS_SCRIPTS_DIR") or _project_root() / "guiones"))
-    # Igual que la UI: las rutas relativas de música/sfx de un guion pegado se buscan en examples/
+    # Same as the UI: relative music/sfx paths of a pasted script are looked up in examples/
     script_base_dir: Path = field(default_factory=lambda: _project_root() / "examples")
-    cache_dir: Path | None = None  # None = la caché por defecto (.cache/tts)
+    cache_dir: Path | None = None  # None = the default cache (.cache/tts)
     default_wait: float = field(default_factory=lambda: _env_float(
         "PODCAST_TTS_MCP_WAIT", DEFAULT_WAIT_SECONDS))
 
@@ -139,21 +139,21 @@ def _env_float(name: str, default: float) -> float:
 
 
 # --------------------------------------------------------------------------- #
-# Utilidades
+# Utilities
 # --------------------------------------------------------------------------- #
 
 
 class ToolInputError(ValueError):
-    """Argumento inválido de una herramienta (el mensaje se devuelve al modelo)."""
+    """Invalid tool argument (the message is returned to the model)."""
 
 
 def validate_output_name(name: str | None, fmt: str, default: str = "podcast") -> str:
-    """Nombre de fichero seguro (sin rutas ni ``..``), sin extensión. Lanza ToolInputError."""
+    """Safe file name (no paths or ``..``), without extension. Raises ToolInputError."""
     raw = (name or "").strip() or default
     if any(sep in raw for sep in ("/", "\\", ":")) or ".." in raw:
         raise ToolInputError(
             f"invalid output_name {raw!r}: give a plain file name without folders, drive "
-            "letters or '..' (e.g. 'historia_del_cafe'); files are always written to the "
+            "letters or '..' (e.g. 'history_of_coffee'); files are always written to the "
             "output folder")
     stem = raw
     for ext in OUTPUT_FORMATS:
@@ -204,10 +204,10 @@ def _check_engine(engine: str | None) -> str | None:
 
 
 def resolve_media_path(raw: str, base_dir: Path | None) -> Path | None:
-    """Mismas reglas que el ensamblador con ``allow_external_paths=False`` (UI remota).
+    """Same rules as the assembler with ``allow_external_paths=False`` (remote UI).
 
-    Solo rutas relativas, sin ``..``, de ficheros de audio, dentro de la carpeta base del
-    guion o del proyecto. Devuelve ``None`` si la ruta no se permite o no existe.
+    Only relative paths, without ``..``, to audio files inside the script's base folder or the
+    project folder. Returns ``None`` if the path is not allowed or does not exist.
     """
     path = Path(raw)
     if path.is_absolute() or path.drive or path.root or ".." in path.parts:
@@ -225,7 +225,7 @@ def resolve_media_path(raw: str, base_dir: Path | None) -> Path | None:
 
 
 def media_errors(script: Any, base_dir: Path | None) -> list[dict[str, Any]]:
-    """Errores de las rutas de música/sfx (no permitidas, inexistentes o que no son audio)."""
+    """Errors in music/sfx paths (not allowed, missing or not audio files)."""
     from .script_parser import Music, Sfx
 
     errors: list[dict[str, Any]] = []
@@ -251,7 +251,7 @@ def media_errors(script: Any, base_dir: Path | None) -> list[dict[str, Any]]:
 
 
 def estimate_seconds(script: Any, *, chunk_gap: float = 0.12) -> float:
-    """Duración aproximada: ~150 palabras/minuto + pausas (no cuenta los clips de música)."""
+    """Approximate duration: ~150 words/minute + pauses (music clips are not counted)."""
     from .script_parser import Pause, Speech
 
     total = 0.0
@@ -279,13 +279,13 @@ def _preview(text: str, n: int = 80) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Validación
+# Validation
 # --------------------------------------------------------------------------- #
 
 
 def analyze_script(text: str, cfg: ServerConfig, engine: str | None = None,
                    base_dir: Path | None = None) -> dict[str, Any]:
-    """Informe de validación de un guion (no sintetiza)."""
+    """Validation report for a script (does not synthesize)."""
     from .engines import EngineError, engine_info
     from .licensing import engines_in_script, license_notice
     from .script_parser import Music, Pause, ScriptParseError, Sfx, Speech, parse_script
@@ -357,7 +357,7 @@ def analyze_script(text: str, cfg: ServerConfig, engine: str | None = None,
     if script.meta.lang and len({v["lang"] for v in voices_used}) > 1:
         warnings_.append(
             f"front matter 'lang: {script.meta.lang}' forces that language on every voice; "
-            "for bilingual scripts remove it and use [voz:name lang=xx] per passage")
+            "for bilingual scripts remove it and use [voice:name lang=xx] per passage")
     try:
         notice = license_notice(engines)
     except EngineError:
@@ -401,7 +401,7 @@ def analyze_script(text: str, cfg: ServerConfig, engine: str | None = None,
 
 
 # --------------------------------------------------------------------------- #
-# Trabajos de generación
+# Generation jobs
 # --------------------------------------------------------------------------- #
 
 _GPU_LOCK = threading.Lock()
@@ -413,7 +413,7 @@ class Job:
     kind: str
     output: Path
     started: float = field(default_factory=time.perf_counter)
-    progress: tuple[float, float, str] = (0, 1, "En cola")
+    progress: tuple[float, float, str] = (0, 1, "Queued")
     done: threading.Event = field(default_factory=threading.Event)
     result: dict[str, Any] | None = None
     error: str | None = None
@@ -421,10 +421,10 @@ class Job:
     events: list[tuple[float, float, str]] = field(default_factory=list)
 
     def update(self, i: float, n: float, msg: str) -> None:
-        """Registra un paso (lo llama el hilo de síntesis).
+        """Record a step (called by the synthesis thread).
 
-        El total es ``n + 1`` (el último paso es exportar) y el valor nunca repite ni baja,
-        como exige MCP para las notificaciones de progreso.
+        The total is ``n + 1`` (the last step is the export) and the value never repeats or
+        decreases, as MCP requires for progress notifications.
         """
         value, total = float(i), float(n) + 1
         if self.events and value <= self.events[-1][0]:
@@ -444,11 +444,11 @@ _JOBS_LOCK = threading.Lock()
 
 
 def _start_job(kind: str, output: Path, work: Any) -> Job:
-    """Lanza ``work(job) -> dict`` en un hilo; serializa el acceso a la GPU."""
+    """Run ``work(job) -> dict`` in a thread; serializes access to the GPU."""
     job = Job(id=uuid.uuid4().hex[:12], kind=kind, output=output)
     with _JOBS_LOCK:
         _JOBS[job.id] = job
-        # Conserva solo los 50 últimos trabajos terminados.
+        # Keep only the last 50 finished jobs.
         finished = [j for j in _JOBS.values() if j.done.is_set()]
         for old in sorted(finished, key=lambda j: j.started)[:-50]:
             _JOBS.pop(old.id, None)
@@ -456,10 +456,10 @@ def _start_job(kind: str, output: Path, work: Any) -> Job:
     def runner() -> None:
         try:
             with _GPU_LOCK:
-                job.update(0, 0, "Preparando (la primera vez carga los modelos: 10-30 s)")
+                job.update(0, 0, "Preparing (the first run loads the models: 10-30 s)")
                 job.result = work(job)
-        except Exception as exc:  # noqa: BLE001 - se devuelve al modelo
-            log.exception("Fallo en el trabajo %s", job.id)
+        except Exception as exc:  # noqa: BLE001 - returned to the model
+            log.exception("Job %s failed", job.id)
             job.error = _error_text(exc)
         finally:
             job.finished = time.perf_counter()
@@ -493,10 +493,10 @@ async def _await_job(job: Job, ctx: Any, wait_seconds: float | None,
     wait = cfg.default_wait if wait_seconds is None else float(wait_seconds)
     wait = max(0.0, min(wait, MAX_WAIT_SECONDS))
     deadline = time.monotonic() + wait
-    # Una espera nueva (get_generation_status) empieza en el último paso conocido.
+    # A new wait (get_generation_status) starts at the last known step.
     sent = 0 if replay else max(0, len(job.events) - 1)
     while True:
-        # Reenvía todos los pasos nuevos (uno por segmento) desde la última espera.
+        # Forward every new step (one per segment) since the last wait.
         done = job.done.is_set()
         events = job.events[sent:]
         sent += len(events)
@@ -504,7 +504,7 @@ async def _await_job(job: Job, ctx: Any, wait_seconds: float | None,
             for i, n, msg in events:
                 try:
                     await ctx.report_progress(i, max(n, 1), msg)
-                except Exception:  # noqa: BLE001 - el cliente puede no aceptar progreso
+                except Exception:  # noqa: BLE001 - the client may not accept progress
                     break
         if done:
             break
@@ -532,7 +532,7 @@ def _render_job(job: Job, segments: Any, *, engine: str | None, base_dir: Path |
                 notice: str | None) -> dict[str, Any]:
     from .assembler import AssembleOptions, assemble, export_audio
 
-    # Música/sfx con las mismas restricciones que la UI en modo remoto.
+    # Music/sfx with the same restrictions as the UI in remote mode.
     options = AssembleOptions(engine_override=engine, base_dir=base_dir,
                               allow_external_paths=False)
     if cfg.cache_dir is not None:
@@ -540,7 +540,7 @@ def _render_job(job: Job, segments: Any, *, engine: str | None, base_dir: Path |
 
     audio = assemble(segments, voices_dir=cfg.voices_root(), options=options,
                      progress=job.update)
-    job.finish_step("Exportando el audio")
+    job.finish_step("Exporting the audio")
     tags = {"title": title} if title else None
     path = export_audio(audio, job.output, bitrate="192k", tags=tags)
     elapsed = time.perf_counter() - job.started
@@ -559,7 +559,7 @@ def _render_job(job: Job, segments: Any, *, engine: str | None, base_dir: Path |
 
 
 # --------------------------------------------------------------------------- #
-# Guía del formato
+# Format guide
 # --------------------------------------------------------------------------- #
 
 WRITING_GUIDE = """\
@@ -573,77 +573,91 @@ front matter keys below work in any language.
 
 ```markdown
 ---
-title: La historia del café
+title: The history of coffee
 ---
 
-[voz:ana]
-¡Hola y bienvenidos! Hoy viajamos a Etiopía, donde, según la leyenda, empezó todo.
+[voice:emma]
+Hello and welcome! Today we travel to Ethiopia, where, according to legend, it all began.
 
-[voz:carlos]
-Así es, Ana. Cuenta la historia que un pastor llamado Kaldi vio a sus cabras muy inquietas...
+[voice:david]
+That's right, Emma. The story goes that a goat herder called Kaldi saw his goats acting
+strangely restless...
 
-[pausa:1]
-[voz:ana]
-Y hasta aquí el episodio de hoy. ¡Gracias por escucharnos!
+[pause:1]
+[voice:emma]
+And that's all for today's episode. Thanks for listening!
 ```
 
-- `[voz:NAME]` (or `[voice:NAME]`) switches the speaker until the next `[voz:]`. NAME must be a
-  voice returned by `list_voices`; never invent names. Optional attributes:
-  `lang=en`, `speed=0.9` (0.25-4, keep 0.9-1.1), `engine=f5|xtts|...`.
-- `[pausa:1.5]` (or `[pause:1.5]`) inserts N seconds of silence.
+## Tags
+
+- `[voice:NAME]` switches the speaker until the next `[voice:]`. NAME must be a voice returned
+  by `list_voices`; never invent names. Optional attributes: `lang=en`, `speed=0.9` (0.25-4,
+  keep 0.9-1.1), `engine=f5|xtts|...`.
+- `[pause:1.5]` inserts N seconds of silence.
+- `[title:Episode title]` sets the episode title (alternative to the front matter `title:`).
+- `[music:file.mp3]` plays a clip; `[music:file.mp3 bg vol=0.12]` (or `background`) plays it
+  as background music under the voices; `[sfx:ding.wav]` plays a sound effect.
+- Spanish aliases are also accepted: `[voz:]`, `[pausa:]`, `[musica:]`, `[titulo:]` and `fondo`
+  (= `bg`). Prefer the English tags.
 - A blank line starts a new paragraph (short 0.4 s pause).
 - Lines starting with `#` or `<!--` are comments (not spoken): use them for section notes.
-- Do NOT put `lang:` in the front matter of a bilingual script: each voice already has its
-  language (see `list_voices`); use `[voz:ana lang=en]` for a passage in another language.
-- Music/sfx (`[musica:file.mp3 fondo vol=0.12]`, `[sfx:ding.wav]`) only with audio files that
-  really exist, as paths relative to the project's examples/ folder (or to the script's folder
-  for generate_podcast_from_file) or to the project folder; absolute paths and '..' are not
-  allowed. If you have no audio files, do not use these tags.
+- Music/sfx only with audio files that really exist, as paths relative to the project's
+  examples/ folder (or to the script's folder for generate_podcast_from_file) or to the project
+  folder; absolute paths and '..' are not allowed. If you have no audio files, do not use
+  these tags.
+
+## Front matter
+
+Optional YAML block at the top between `---` lines: `title:` (episode title, written to the
+audio metadata), `lang:` (forces one language on every voice), `default_voice:`.
+Do NOT put `lang:` in the front matter of a bilingual script: each voice already has its
+language (see `list_voices`); use `[voice:emma lang=es]` for a passage in another language.
 
 ## Podcast structure that sounds good
 
 1. Hook intro (15-30 s): one surprising fact or question, then hosts introduce the topic.
 2. 2-4 blocks, each with a clear idea; mark them with `# Block N: ...` comments and
-   `[pausa:1]` between blocks; spoken transitions ("Y esto nos lleva a...").
+   `[pause:1]` between blocks; spoken transitions ("And that brings us to...").
 3. Closing: short recap, one memorable takeaway and a goodbye.
 - Natural dialogue between hosts: alternate turns of 1-4 sentences, react to each other
-  ("¡No me digas!", "Exacto"), ask questions, avoid long monologues and lists.
+  ("No way!", "Exactly"), ask questions, avoid long monologues and lists.
 - Length: about 150 spoken words per minute (3 min ≈ 450 words, 5 min ≈ 750 words).
 
 ## Writing for text-to-speech
 
 - Short, complete sentences (< 250 characters each); punctuation sets the rhythm.
 - Write numbers, dates, times, units, symbols and abbreviations as words
-  ("mil ochocientos cincuenta", "el veinte por ciento", "por ejemplo", "doctor").
+  ("eighteen fifty", "twenty percent", "for example", "doctor").
 - Expand acronyms the way they should be pronounced; say URLs in words.
 - No emojis, markdown formatting (**bold**, bullets, links), tables or code in spoken text.
-- In Spanish use opening marks `¿` and `¡`.
+- In Spanish use the opening marks `¿` and `¡`.
 
 ## Workflow
 
-1. `list_voices` -> pick voices (default: two hosts in the user's language, e.g. ana + carlos
-   for Spanish, emma + david for English).
+1. `list_voices` -> pick voices (default: two hosts in the user's language, e.g. emma + david
+   for English, ana + carlos for Spanish).
 2. Write the script following this guide.
 3. `validate_script` -> fix every error (they include the line number) and re-validate.
 4. `generate_podcast` -> if it returns status "running", call `get_generation_status` with the
    job_id until status is "done". Report `output_path` and `duration` to the user.
 
-The full tag reference (in Spanish) follows.
+The full tag reference follows (the Spanish tag aliases it may mention are equivalent to the
+English tags above).
 """
 
 
 def script_format_text() -> str:
-    ref = _project_root() / "skill" / "podcast-tts" / "references" / "formato-guion.md"
+    ref = _project_root() / "skill" / "podcast-tts" / "references" / "script-format.md"
     try:
         reference = ref.read_text(encoding="utf-8")
     except OSError:
-        reference = ("(Referencia completa no disponible en esta instalación: ver "
-                     "skill/podcast-tts/references/formato-guion.md en el repositorio.)")
+        reference = ("(Full reference not available in this installation: see "
+                     "skill/podcast-tts/references/script-format.md in the repository.)")
     return WRITING_GUIDE + "\n---\n\n" + reference
 
 
 # --------------------------------------------------------------------------- #
-# Servidor
+# Server
 # --------------------------------------------------------------------------- #
 
 INSTRUCTIONS = """\
@@ -653,14 +667,14 @@ Workflow: list_voices -> get_script_format (once per conversation) -> write the 
 the topic first if you have web tools) -> validate_script -> generate_podcast (poll
 get_generation_status if it returns status 'running') -> tell the user the output_path and
 duration, and offer changes. For a single sentence or paragraph use synthesize_text.
-Defaults when the user does not say: two voices (ana and carlos for Spanish, emma and david for
-English), 3-5 minutes (~150 words per minute), the user's language. The first generation loads
+Defaults when the user does not say: two voices (emma and david for English, ana and carlos for
+Spanish), 3-5 minutes (~150 words per minute), the user's language. The first generation loads
 the models (10-30 s); a 5 minute episode takes about 1-2 minutes on an RTX-class GPU.
 """
 
 
 def build_server(cfg: ServerConfig | None = None) -> Any:
-    """Crea el servidor FastMCP con todas las herramientas, el prompt y el recurso."""
+    """Create the FastMCP server with all the tools, the prompt and the resource."""
     from mcp.server.fastmcp import Context, FastMCP
     from mcp.server.fastmcp.exceptions import ToolError
     from mcp.types import ToolAnnotations
@@ -678,7 +692,7 @@ def build_server(cfg: ServerConfig | None = None) -> Any:
     def list_voices() -> dict[str, Any]:
         """List the voices available for scripts and synthesize_text.
 
-        Returns each voice's `name` (the value to use in `[voz:name]`), `lang` (its main
+        Returns each voice's `name` (the value to use in `[voice:name]`), `lang` (its main
         language), `engine` (default TTS engine), `description` (gender/style), whether it is a
         `cloud` voice (paid online service) and whether it has a reference clip. Always call this
         before writing a script: only these names are valid, never invent voice names.
@@ -733,9 +747,9 @@ def build_server(cfg: ServerConfig | None = None) -> Any:
     def get_script_format() -> str:
         """Return the podcast script format and writing guide. Read it before writing a script.
 
-        Explains the Markdown format with tags (`[voz:name]` speaker changes, `[pausa:N]`
-        pauses, comments, music), how to structure an engaging podcast (hook intro, blocks,
-        transitions, closing, natural dialogue, ~150 words per minute) and how to write text
+        Explains the Markdown format with tags (`[voice:name]` speaker changes, `[pause:N]`
+        pauses, comments, `[music:...]`; Spanish aliases such as `[voz:]` also work), how to
+        structure an engaging podcast (hook intro, blocks, transitions, closing, natural dialogue, ~150 words per minute) and how to write text
         that sounds natural with TTS (numbers and abbreviations in words, short sentences, no
         markdown or emojis). Scripts may be written in any language.
         """
@@ -776,7 +790,7 @@ def build_server(cfg: ServerConfig | None = None) -> Any:
         stem = validate_output_name(output_name, fmt, default)
         cfg.output_dir.mkdir(parents=True, exist_ok=True)
         path = _unique_path(cfg.output_dir, stem, fmt, overwrite)
-        if not _inside(path, cfg.output_dir):  # defensa en profundidad
+        if not _inside(path, cfg.output_dir):  # defence in depth
             raise ToolInputError("invalid output_name")
         return path
 
@@ -787,7 +801,7 @@ def build_server(cfg: ServerConfig | None = None) -> Any:
             path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
             return str(path)
         except OSError as exc:
-            log.warning("No se pudo guardar el guion: %s", exc)
+            log.warning("Could not save the script: %s", exc)
             return None
 
     # ------------------------------------------------------------------ #
@@ -805,7 +819,7 @@ def build_server(cfg: ServerConfig | None = None) -> Any:
         """Generate the complete podcast audio from a script and return the file path.
 
         - `script`: full Markdown script (validate it first with validate_script).
-        - `output_name`: plain file name without folders, e.g. "historia_del_cafe"; the file is
+        - `output_name`: plain file name without folders, e.g. "history_of_coffee"; the file is
           written to the podcast-tts output folder (extension added from `format`). If the file
           exists a numeric suffix is added unless `overwrite` is true.
         - `engine`: optional, forces one engine for all voices ("f5", "xtts", "dummy" for a
@@ -935,7 +949,7 @@ def build_server(cfg: ServerConfig | None = None) -> Any:
             segments = [Speech(voice=voice, text=chunk, lang=lang or None,
                                speed=float(speed) if speed else None)
                         for chunk in chunk_text(body)]
-            safe_voice = re.sub(r"[^\w\-]", "_", voice or "voz")
+            safe_voice = re.sub(r"[^\w\-]", "_", voice or "voice")
             out = _output(output_name, fmt, f"tts_{safe_voice}", overwrite)
             from .licensing import license_notice
             from .assembler import AssembleOptions, resolve_speech
@@ -1050,8 +1064,8 @@ def build_server(cfg: ServerConfig | None = None) -> Any:
                 description="Create a podcast about {topic} with {voices} lasting ~{minutes} "
                             "min: research, write the script, validate and generate the audio.")
     def podcast(topic: str, voices: str = "", minutes: str = "4", language: str = "") -> str:
-        voices_txt = voices.strip() or ("two hosts (default: ana and carlos for Spanish, "
-                                        "emma and david for English)")
+        voices_txt = voices.strip() or ("two hosts (default: emma and david for English, "
+                                        "ana and carlos for Spanish)")
         lang_txt = language.strip() or "the language the user is writing in"
         try:
             mins = float(str(minutes).replace(",", ".") or 4)
@@ -1073,7 +1087,7 @@ Follow these steps with the podcast-tts tools:
    written as words; no markdown, emojis or lists in the spoken text; ~{words} words.
 4. Call validate_script and fix every error until it is valid.
 5. Call generate_podcast with a short output_name derived from the topic (e.g.
-   "historia_del_cafe"). If it returns status "running", call get_generation_status with the
+   "history_of_coffee"). If it returns status "running", call get_generation_status with the
    job_id until it is "done".
 6. Reply with the absolute output_path, the duration, the license_notice if any, and offer
    changes (tone, length, voices, sections)."""
@@ -1082,7 +1096,7 @@ Follow these steps with the podcast-tts tools:
 
 
 # --------------------------------------------------------------------------- #
-# Arranque
+# Startup
 # --------------------------------------------------------------------------- #
 
 
@@ -1092,12 +1106,12 @@ async def _serve(mcp: Any, proto_in: io.TextIOWrapper, proto_out: io.TextIOWrapp
 
     async with stdio_server(stdin=anyio.wrap_file(proto_in),
                             stdout=anyio.wrap_file(proto_out)) as (read, write):
-        server = mcp._mcp_server  # noqa: SLF001 - igual que FastMCP.run_stdio_async
+        server = mcp._mcp_server  # noqa: SLF001 - same as FastMCP.run_stdio_async
         await server.run(read, write, server.create_initialization_options())
 
 
 def run(cfg: ServerConfig | None = None) -> int:
-    """Protege stdio y sirve por stdio hasta que el cliente cierre la conexión."""
+    """Protect stdio and serve over stdio until the client closes the connection."""
     import anyio
 
     proto_in, proto_out = protect_stdio()
@@ -1105,11 +1119,11 @@ def run(cfg: ServerConfig | None = None) -> int:
     try:
         import mcp  # noqa: F401
     except ImportError:
-        print("Error: falta el paquete 'mcp'. Instala el extra: uv sync --extra mcp "
-              "(o ejecuta bats\\install_integrations.bat).", file=sys.stderr)
+        print("Error: the 'mcp' package is missing. Install the extra: uv sync --extra mcp "
+              "(or run bats\\install_integrations.bat).", file=sys.stderr)
         return 2
     cfg = cfg or ServerConfig()
-    log.info("podcast-tts MCP: salida en %s, voces en %s", cfg.output_dir, cfg.voices_root())
+    log.info("podcast-tts MCP: output in %s, voices in %s", cfg.output_dir, cfg.voices_root())
     server = build_server(cfg)
     try:
         anyio.run(_serve, server, proto_in, proto_out)
@@ -1119,7 +1133,7 @@ def run(cfg: ServerConfig | None = None) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Entrada de ``podcast-tts-mcp`` (equivale a ``podcast-tts mcp``)."""
+    """Entry point of ``podcast-tts-mcp`` (same as ``podcast-tts mcp``)."""
     from .cli import main as cli_main
 
     return cli_main(["mcp", *(sys.argv[1:] if argv is None else argv)])

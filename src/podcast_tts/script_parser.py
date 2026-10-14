@@ -1,22 +1,25 @@
-"""Parser del formato de guion: Markdown con etiquetas entre corchetes.
+"""Parser of the script format: Markdown with tags in square brackets.
 
-Ejemplo::
+Example::
 
     ---
-    title: Mi episodio
-    lang: es
-    default_voice: ana
+    title: My episode
+    lang: en
+    default_voice: emma
     ---
-    # Esto es un comentario / encabezado: no se sintetiza
-    [voz:ana] Hola y bienvenidos. [pausa:1.5]
-    [voz:carlos lang=en speed=0.95] Hi everyone!
-    [musica:intro.mp3 fondo vol=0.15]
+    # This is a comment / heading: it is not spoken
+    [voice:emma] Hello and welcome. [pause:1.5]
+    [voice:ana lang=es speed=0.95] ¡Hola a todos!
+    [music:intro.mp3 bg vol=0.15]
     ...
-    [musica:stop]
+    [music:stop]
 
-El resultado es un :class:`ParsedScript` con metadatos (:class:`ScriptMeta`)
-y una lista de segmentos (:class:`Speech`, :class:`Pause`, :class:`Music`,
-:class:`Sfx`).
+English tags are canonical (``[voice:]``, ``[pause:]``, ``[music:]``, ``[title:]``, ``bg`` /
+``background``); the Spanish aliases ``[voz:]``, ``[pausa:]``, ``[musica:]``/``[música:]``,
+``[titulo:]``/``[título:]`` and ``fondo`` are accepted as well.
+
+The result is a :class:`ParsedScript` with metadata (:class:`ScriptMeta`) and a list of
+segments (:class:`Speech`, :class:`Pause`, :class:`Music`, :class:`Sfx`).
 """
 
 from __future__ import annotations
@@ -55,42 +58,42 @@ DEFAULT_MUSIC_VOLUME = 1.0
 DEFAULT_BG_VOLUME = 0.15
 DEFAULT_BG_FADE = 1.5
 DEFAULT_SFX_VOLUME = 1.0
-MAX_SECONDS = 600.0  # tope de pausas y fundidos (10 min)
+MAX_SECONDS = 600.0  # cap for pauses and fades (10 min)
 
 
 def known_engines() -> tuple[str, ...]:
-    """Motores válidos en los guiones: integrados + plugins (ver :mod:`podcast_tts.engines`)."""
+    """Engines valid in scripts: built-in + plugins (see :mod:`podcast_tts.engines`)."""
     from .engines import engine_names
 
     return engine_names()
 
 
-def __getattr__(attr: str) -> Any:  # PEP 562: KNOWN_ENGINES dinámico (compatibilidad)
+def __getattr__(attr: str) -> Any:  # PEP 562: dynamic KNOWN_ENGINES (compatibility)
     if attr == "KNOWN_ENGINES":
         return known_engines()
     raise AttributeError(f"module {__name__!r} has no attribute {attr!r}")
 
 
 class ScriptParseError(ValueError):
-    """Error de sintaxis en el guion (incluye el número de línea si se conoce)."""
+    """Syntax error in the script (includes the line number when known)."""
 
     def __init__(self, message: str, line: int | None = None) -> None:
         self.line = line
         self.message = message
-        super().__init__(f"Línea {line}: {message}" if line else message)
+        super().__init__(f"Line {line}: {message}" if line else message)
 
 
 # --------------------------------------------------------------------------- #
-# Modelos de datos
+# Data model
 # --------------------------------------------------------------------------- #
 
 
 @dataclass
 class Speech:
-    """Fragmento de texto a sintetizar con una voz.
+    """Piece of text to synthesize with a voice.
 
-    ``lang``, ``speed`` y ``engine`` a ``None`` significan "usar el valor de la
-    voz (voice.json) o el global del guion".
+    ``lang``, ``speed`` and ``engine`` set to ``None`` mean "use the voice's value
+    (voice.json) or the script-wide one".
     """
 
     voice: str
@@ -103,7 +106,7 @@ class Speech:
 
 @dataclass
 class Pause:
-    """Silencio de ``seconds`` segundos."""
+    """Silence of ``seconds`` seconds."""
 
     seconds: float
     line: int | None = None
@@ -111,11 +114,11 @@ class Pause:
 
 @dataclass
 class Music:
-    """Clip musical.
+    """Music clip.
 
-    - ``background=False``: se inserta en la línea temporal (avanza el tiempo).
-    - ``background=True``: suena bajo las voces siguientes hasta un ``stop``.
-    - ``stop=True``: detiene la música de fondo activa (``fade`` = fundido de salida).
+    - ``background=False``: inserted in the timeline (advances the time).
+    - ``background=True``: plays under the following voices until a ``stop``.
+    - ``stop=True``: stops the active background music (``fade`` = fade-out).
     """
 
     path: str = ""
@@ -128,7 +131,7 @@ class Music:
 
 @dataclass
 class Sfx:
-    """Efecto puntual: se superpone a partir de la posición actual (no avanza el tiempo)."""
+    """One-off effect: overlaid from the current position (does not advance the time)."""
 
     path: str
     volume: float = DEFAULT_SFX_VOLUME
@@ -148,7 +151,7 @@ _TYPE_NAMES: dict[type, str] = {v: k for k, v in _SEGMENT_TYPES.items()}
 
 @dataclass
 class ScriptMeta:
-    """Metadatos del guion (front matter YAML + etiquetas ``[titulo:...]``)."""
+    """Script metadata (YAML front matter + ``[title:...]`` tags)."""
 
     title: str | None = None
     lang: str | None = None
@@ -160,14 +163,14 @@ class ScriptMeta:
 
 @dataclass
 class ParsedScript:
-    """Resultado del parseo: metadatos + segmentos."""
+    """Parse result: metadata + segments."""
 
     meta: ScriptMeta = field(default_factory=ScriptMeta)
     segments: list[Segment] = field(default_factory=list)
 
     @property
     def voices(self) -> list[str]:
-        """Voces usadas, en orden de aparición."""
+        """Voices used, in order of appearance."""
         seen: list[str] = []
         for seg in self.segments:
             if isinstance(seg, Speech) and seg.voice not in seen:
@@ -201,36 +204,36 @@ class ParsedScript:
 
 
 def segment_to_dict(seg: Segment) -> dict[str, Any]:
-    """Serializa un segmento a dict con clave ``type``."""
+    """Serialize a segment to a dict with a ``type`` key."""
     try:
         type_name = _TYPE_NAMES[type(seg)]
-    except KeyError as exc:  # pragma: no cover - defensivo
-        raise TypeError(f"Segmento no soportado: {seg!r}") from exc
+    except KeyError as exc:  # pragma: no cover - defensive
+        raise TypeError(f"Unsupported segment: {seg!r}") from exc
     return {"type": type_name, **asdict(seg)}
 
 
 def segment_from_dict(data: dict[str, Any]) -> Segment:
-    """Reconstruye un segmento desde un dict con clave ``type``."""
+    """Rebuild a segment from a dict with a ``type`` key."""
     data = dict(data)
     type_name = data.pop("type", None)
     if type_name not in _SEGMENT_TYPES:
-        raise ValueError(f"Tipo de segmento desconocido: {type_name!r}")
+        raise ValueError(f"Unknown segment type: {type_name!r}")
     cls = _SEGMENT_TYPES[type_name]
     fields = cls.__dataclass_fields__
     return cls(**{k: v for k, v in data.items() if k in fields})
 
 
 # --------------------------------------------------------------------------- #
-# Troceado de texto
+# Text chunking
 # --------------------------------------------------------------------------- #
 
-# Fin de frase: . ! ? … seguido (opcionalmente) de comillas/paréntesis y espacio.
+# End of sentence: . ! ? … optionally followed by quotes/brackets, then whitespace.
 _SENTENCE_END = re.compile(r"[.!?…]+[\"'”»)\]]*\s+")
 _SOFT_BREAK = re.compile(r"(?<=[,;:—–])\s+")
 
 
 def split_sentences(text: str) -> list[str]:
-    """Divide en frases por ``. ! ? …`` y saltos de línea."""
+    """Split into sentences at ``. ! ? …`` and line breaks."""
     sentences: list[str] = []
     for line in text.splitlines():
         line = " ".join(line.split())
@@ -264,7 +267,7 @@ def _pack(pieces: list[str], max_chars: int) -> list[str]:
 
 
 def _split_long(sentence: str, max_chars: int) -> list[str]:
-    """Parte una frase demasiado larga por comas/;/: y, en último caso, por palabras."""
+    """Split a sentence that is too long at commas/;/: and, as a last resort, between words."""
     out: list[str] = []
     for part in _SOFT_BREAK.split(sentence):
         if len(part) <= max_chars:
@@ -284,13 +287,13 @@ def _split_long(sentence: str, max_chars: int) -> list[str]:
 
 
 def chunk_text(text: str, max_chars: int = DEFAULT_MAX_CHARS) -> list[str]:
-    """Agrupa frases en trozos de como máximo ``max_chars`` sin cortar frases.
+    """Group sentences into chunks of at most ``max_chars`` without cutting sentences.
 
-    Solo si una frase supera por sí sola ``max_chars`` se divide por comas o,
-    en último caso, por palabras.
+    Only a sentence that alone exceeds ``max_chars`` is split at commas or, as a last
+    resort, between words.
     """
     if max_chars <= 0:
-        raise ValueError("max_chars debe ser > 0")
+        raise ValueError("max_chars must be > 0")
     pieces: list[str] = []
     for sentence in split_sentences(text):
         if len(sentence) > max_chars:
@@ -326,8 +329,8 @@ def _coerce_scalar(value: str) -> Any:
         return v
 
 
-# Claves del front matter que son texto: no se convierten a bool/número
-# (``lang: no`` es noruego, no ``False``).
+# Front matter keys that are text: never converted to bool/number
+# (``lang: no`` is Norwegian, not ``False``).
 _TEXT_META = {"title", "lang", "default_voice", "default_engine"}
 
 
@@ -343,7 +346,7 @@ def _parse_front_matter_simple(block: str, start_line: int) -> dict[str, Any]:
             continue
         if ":" not in line:
             raise ScriptParseError(
-                f"front matter: se esperaba 'clave: valor', encontrado {raw!r}",
+                f"front matter: expected 'key: value', found {raw!r}",
                 start_line + offset,
             )
         key, value = line.split(":", 1)
@@ -357,7 +360,7 @@ def _parse_front_matter_simple(block: str, start_line: int) -> dict[str, Any]:
 
 
 def _parse_front_matter(block: str, start_line: int) -> dict[str, Any]:
-    """Usa PyYAML si está instalado; si no, un parser trivial ``clave: valor``."""
+    """Use PyYAML if installed; otherwise a trivial ``key: value`` parser."""
     try:
         import yaml  # type: ignore[import-untyped]
     except ImportError:
@@ -365,15 +368,15 @@ def _parse_front_matter(block: str, start_line: int) -> dict[str, Any]:
     try:
         data = yaml.safe_load(block) or {}
     except yaml.YAMLError as exc:
-        raise ScriptParseError(f"front matter YAML inválido: {exc}", start_line) from exc
+        raise ScriptParseError(f"invalid YAML front matter: {exc}", start_line) from exc
     if not isinstance(data, dict):
-        raise ScriptParseError("el front matter debe ser un mapa clave: valor", start_line)
+        raise ScriptParseError("the front matter must be a key: value mapping", start_line)
     result = {str(k): v for k, v in data.items()}
     if any(_is_text_key(k) and isinstance(v, (bool, int, float)) for k, v in result.items()):
-        # Relee como texto literal (BaseLoader no convierte tipos): 'no' -> "no", '1.0' -> "1.0".
+        # Re-read as literal text (BaseLoader does not convert types): 'no' -> "no", '1.0' -> "1.0".
         try:
             raw = yaml.load(block, Loader=yaml.BaseLoader) or {}
-        except yaml.YAMLError:  # pragma: no cover - ya se ha parseado con safe_load
+        except yaml.YAMLError:  # pragma: no cover - already parsed by safe_load
             raw = {}
         for key, value in result.items():
             if _is_text_key(key) and isinstance(value, (bool, int, float)):
@@ -410,10 +413,10 @@ def _build_meta(data: dict[str, Any], line: int) -> ScriptMeta:
             try:
                 pause = float(value)
             except (TypeError, ValueError) as exc:
-                raise ScriptParseError(f"'{key}' debe ser un número", line) from exc
+                raise ScriptParseError(f"'{key}' must be a number", line) from exc
             if not math.isfinite(pause) or not 0 <= pause <= MAX_SECONDS:
                 raise ScriptParseError(
-                    f"'{key}' debe estar entre 0 y {MAX_SECONDS:g} segundos", line
+                    f"'{key}' must be between 0 and {MAX_SECONDS:g} seconds", line
                 )
             meta.paragraph_pause = pause
         else:
@@ -423,19 +426,19 @@ def _build_meta(data: dict[str, Any], line: int) -> ScriptMeta:
         valid = known_engines()
         if meta.default_engine not in valid:
             raise ScriptParseError(
-                f"motor desconocido '{meta.default_engine}' "
-                f"(válidos: {', '.join(valid)})",
+                f"unknown engine '{meta.default_engine}' "
+                f"(valid: {', '.join(valid)})",
                 line,
             )
     return meta
 
 
 # --------------------------------------------------------------------------- #
-# Etiquetas
+# Tags
 # --------------------------------------------------------------------------- #
 
 _TAG_RE = re.compile(r"\[([^\[\]\n]*)\]")
-# Enlace Markdown: ``[texto](url)`` -> se lee solo "texto".
+# Markdown link: ``[text](url)`` -> only "text" is read.
 _LINK_TAIL_RE = re.compile(r"\(([^()\s]*)\)")
 _COMMENT_OPEN = "<!--"
 _COMMENT_CLOSE = "-->"
@@ -479,7 +482,7 @@ def _split_attrs(tokens: list[str], line: int, tag: str) -> tuple[dict[str, str]
             key, value = tok.split("=", 1)
             key = key.strip().lower()
             if not key:
-                raise ScriptParseError(f"atributo vacío en [{tag}:...]", line)
+                raise ScriptParseError(f"empty attribute in [{tag}:...]", line)
             attrs[key] = _unquote(value.strip())
         else:
             flags.add(tok.lower())
@@ -491,13 +494,13 @@ def _float_attr(value: str, name: str, line: int, *, lo: float | None = None,
     try:
         num = float(value.replace(",", "."))
     except ValueError as exc:
-        raise ScriptParseError(f"'{name}' debe ser un número (recibido {value!r})", line) from exc
+        raise ScriptParseError(f"'{name}' must be a number (got {value!r})", line) from exc
     if not math.isfinite(num):
-        raise ScriptParseError(f"'{name}' debe ser un número finito (recibido {value!r})", line)
+        raise ScriptParseError(f"'{name}' must be a finite number (got {value!r})", line)
     if lo is not None and num < lo:
-        raise ScriptParseError(f"'{name}' debe ser >= {lo} (recibido {num})", line)
+        raise ScriptParseError(f"'{name}' must be >= {lo} (got {num})", line)
     if hi is not None and num > hi:
-        raise ScriptParseError(f"'{name}' debe ser <= {hi} (recibido {num})", line)
+        raise ScriptParseError(f"'{name}' must be <= {hi} (got {num})", line)
     return num
 
 
@@ -507,7 +510,7 @@ def _bool_attr(value: str, name: str, line: int) -> bool:
         return True
     if low in _FALSE:
         return False
-    raise ScriptParseError(f"'{name}' debe ser true/false (recibido {value!r})", line)
+    raise ScriptParseError(f"'{name}' must be true/false (got {value!r})", line)
 
 
 def _check_unknown(attrs: dict[str, str], flags: set[str], allowed: set[str],
@@ -515,7 +518,7 @@ def _check_unknown(attrs: dict[str, str], flags: set[str], allowed: set[str],
     bad = sorted(set(attrs) - allowed) + sorted(flags - allowed_flags)
     if bad:
         raise ScriptParseError(
-            f"atributo(s) desconocido(s) en [{tag}:...]: {', '.join(bad)}", line
+            f"unknown attribute(s) in [{tag}:...]: {', '.join(bad)}", line
         )
 
 
@@ -571,8 +574,8 @@ class _Parser:
         voice = self.state.voice or self.meta.default_voice
         if not voice:
             raise ScriptParseError(
-                "hay texto sin voz asignada: usa [voz:nombre] antes o define "
-                "'default_voice' en el front matter",
+                "text without an assigned voice: put [voice:name] before it or set "
+                "'default_voice' in the front matter",
                 line,
             )
         if self.pending_paragraph and self.segments and isinstance(self.segments[-1], Speech):
@@ -600,12 +603,12 @@ class _Parser:
     # -- tags ------------------------------------------------------------
     @staticmethod
     def is_tag(content: str) -> bool:
-        """``True`` si ``[content]`` debe tratarse como etiqueta (conocida o errata).
+        """``True`` if ``[content]`` must be treated as a tag (a known one or a typo).
 
-        Los corchetes sin ``tipo:`` (casillas ``[ ]``/``[x]``, ``[risas]``, la
-        parte de texto de un enlace Markdown...) son texto normal. Un
-        ``[palabra:...]`` con palabra desconocida sigue siendo error, para
-        detectar erratas como ``[vos:ana]``; salvo URLs (``[https://...]``).
+        Brackets without ``kind:`` (checkboxes ``[ ]``/``[x]``, ``[laughs]``, the text part
+        of a Markdown link...) are plain text. A ``[word:...]`` with an unknown word is
+        still an error, to catch typos such as ``[vocie:ana]``; except URLs
+        (``[https://...]``).
         """
         head = _TAG_HEAD_RE.match(content)
         if not head:
@@ -623,14 +626,14 @@ class _Parser:
         head = _TAG_HEAD_RE.match(content)
         if not head:
             raise ScriptParseError(
-                f"etiqueta no reconocida '[{content}]' (formato esperado [tipo:valor])", line
+                f"unrecognized tag '[{content}]' (expected format [kind:value])", line
             )
         raw_kind, arg = head.group(1), head.group(2)
         kind = _TAG_KINDS.get(raw_kind.lower())
         if kind is None:
             raise ScriptParseError(
-                f"etiqueta desconocida '[{raw_kind}:...]' (válidas: voz/voice, pausa/pause, "
-                "musica/music, sfx, titulo/title)",
+                f"unknown tag '[{raw_kind}:...]' (valid: voice/voz, pause/pausa, "
+                "music/musica, sfx, title/titulo)",
                 line,
             )
         if kind == "title":
@@ -638,7 +641,7 @@ class _Parser:
             return
         tokens = _tokens(arg)
         if not tokens:
-            raise ScriptParseError(f"la etiqueta [{raw_kind}:] necesita un valor", line)
+            raise ScriptParseError(f"the [{raw_kind}:] tag needs a value", line)
         getattr(self, f"_tag_{kind}")(tokens, raw_kind, line)
 
     def _tag_voice(self, tokens: list[str], tag: str, line: int) -> None:
@@ -655,15 +658,15 @@ class _Parser:
             valid = known_engines()
             if engine not in valid:
                 raise ScriptParseError(
-                    f"motor desconocido '{engine}' (válidos: {', '.join(valid)})", line
+                    f"unknown engine '{engine}' (valid: {', '.join(valid)})", line
                 )
             state.engine = engine
         self.state = state
 
     def _tag_pause(self, tokens: list[str], tag: str, line: int) -> None:
         if len(tokens) != 1:
-            raise ScriptParseError(f"[{tag}:...] solo admite un número de segundos", line)
-        seconds = _float_attr(tokens[0].rstrip("sS"), "pausa", line, lo=0.0, hi=MAX_SECONDS)
+            raise ScriptParseError(f"[{tag}:...] only accepts a number of seconds", line)
+        seconds = _float_attr(tokens[0].rstrip("sS"), "pause", line, lo=0.0, hi=MAX_SECONDS)
         self.emit(Pause(seconds=seconds, line=line))
 
     def _tag_music(self, tokens: list[str], tag: str, line: int) -> None:
@@ -698,7 +701,7 @@ class _Parser:
                   else _float_attr(vol_raw, "vol", line, lo=0.0, hi=1.0))
         self.emit(Sfx(path=tokens[0], volume=volume, line=line))
 
-    # -- bucle principal -------------------------------------------------
+    # -- main loop ------------------------------------------------------
     def parse(self, text: str) -> ParsedScript:
         lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
         if lines and lines[0].startswith("﻿"):
@@ -708,7 +711,7 @@ class _Parser:
             try:
                 end = next(i for i in range(1, len(lines)) if lines[i].strip() in ("---", "..."))
             except StopIteration:
-                raise ScriptParseError("front matter sin cerrar (falta '---')", 1) from None
+                raise ScriptParseError("unclosed front matter (missing '---')", 1) from None
             data = _parse_front_matter("\n".join(lines[1:end]), 2)
             self.meta = _build_meta(data, 1)
             start = end + 1
@@ -719,7 +722,7 @@ class _Parser:
             raw = lines[idx]
             stripped = raw.strip()
             if idx in comment_only:
-                continue  # línea ocupada solo por un comentario: no corta el párrafo
+                continue  # line holding only a comment: does not break the paragraph
             if not stripped:
                 if self.buffer:
                     self.flush()
@@ -729,17 +732,17 @@ class _Parser:
                 continue
             pos = 0
             for m in _TAG_RE.finditer(raw):
-                if m.start() < pos:  # dentro de la URL de un enlace ya consumido
+                if m.start() < pos:  # inside the URL of an already consumed link
                     continue
                 content = m.group(1)
                 link = _LINK_TAIL_RE.match(raw, m.end())
                 if not self.is_known_tag(content) and link:
-                    # Enlace Markdown: se lee el texto, no la URL.
+                    # Markdown link: read the text, not the URL.
                     self.add_text(raw[pos:m.start()] + content, lineno)
                     pos = link.end()
                     continue
                 if not self.is_tag(content):
-                    continue  # corchetes normales: se quedan como texto
+                    continue  # plain brackets: kept as text
                 self.add_text(raw[pos:m.start()], lineno)
                 self.handle_tag(content, lineno)
                 pos = m.end()
@@ -750,12 +753,12 @@ class _Parser:
 
 
 def _strip_comments(lines: list[str], start: int) -> set[int]:
-    """Quita en sitio los comentarios HTML ``<!-- ... -->`` de ``lines[start:]``.
+    """Remove HTML comments ``<!-- ... -->`` from ``lines[start:]`` in place.
 
-    Mantiene el número de líneas (para los mensajes de error) y devuelve los
-    índices de las líneas que solo contenían comentario (que se ignoran).
+    Keeps the number of lines (for error messages) and returns the indices of the
+    lines that only contained a comment (they are ignored).
 
-    :raises ScriptParseError: si un ``<!--`` no se cierra.
+    :raises ScriptParseError: if a ``<!--`` is never closed.
     """
     comment_only: set[int] = set()
     in_comment = False
@@ -792,24 +795,24 @@ def _strip_comments(lines: list[str], start: int) -> set[int]:
             comment_only.add(idx)
         lines[idx] = cleaned
     if in_comment:
-        raise ScriptParseError("comentario HTML sin cerrar (falta '-->')", open_line)
+        raise ScriptParseError("unclosed HTML comment (missing '-->')", open_line)
     return comment_only
 
 
 def parse_script(text: str, *, max_chars: int = DEFAULT_MAX_CHARS,
                  paragraph_pause: float | None = None) -> ParsedScript:
-    """Parsea el texto de un guion.
+    """Parse the text of a script.
 
-    :param max_chars: longitud máxima de cada trozo de texto (~250 para F5-TTS).
-    :param paragraph_pause: pausa automática entre párrafos; ``None`` = la del
-        front matter (``paragraph_pause``) o 0.4 s.
-    :raises ScriptParseError: con número de línea si hay etiquetas inválidas.
+    :param max_chars: maximum length of each text chunk (~250 for F5-TTS).
+    :param paragraph_pause: automatic pause between paragraphs; ``None`` = the one in the
+        front matter (``paragraph_pause``) or 0.4 s.
+    :raises ScriptParseError: with the line number if there are invalid tags.
     """
     return _Parser(max_chars, paragraph_pause).parse(text)
 
 
 def parse_file(path: str | Path, *, max_chars: int = DEFAULT_MAX_CHARS,
                paragraph_pause: float | None = None) -> ParsedScript:
-    """Lee (UTF-8) y parsea un fichero de guion."""
+    """Read (UTF-8) and parse a script file."""
     text = Path(path).read_text(encoding="utf-8-sig")
     return parse_script(text, max_chars=max_chars, paragraph_pause=paragraph_pause)

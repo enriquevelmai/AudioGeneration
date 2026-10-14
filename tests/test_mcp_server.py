@@ -1,5 +1,5 @@
-"""Servidor MCP: se arranca ``python -m podcast_tts mcp`` como subproceso y se habla con él con
-el cliente oficial del SDK (``ClientSession`` + ``stdio_client``), como haría un asistente."""
+"""MCP server: ``python -m podcast_tts mcp`` is started as a subprocess and driven with the
+official SDK client (``ClientSession`` + ``stdio_client``), just like an assistant would."""
 
 from __future__ import annotations
 
@@ -93,7 +93,8 @@ def test_list_tools_prompt_and_format(tmp_path: Path) -> None:
     text = prompt.messages[0].content.text
     assert "la historia del café" in text and "450" in text and "validate_script" in text
     guide = fmt.content[0].text
-    assert "[voz:" in guide and "150" in guide and "Front matter" in guide
+    assert "[voice:" in guide and "[voz:" in guide  # English tags + Spanish aliases
+    assert "150" in guide and "Front matter" in guide
     vs = {v["name"]: v for v in _json(voices)["voices"]}
     assert {"ana", "carlos"} <= set(vs)
     assert vs["ana"]["lang"] == "es" and vs["ana"]["cloud"] is False
@@ -124,7 +125,7 @@ def test_validate_script_reports_lines(tmp_path: Path) -> None:
     assert "f5" in ok["engines"] and ok["license_notice"]
     assert bad_tag["valid"] is False and bad_tag["errors"][0]["line"] == 3
     assert bad_voice["valid"] is False and bad_voice["missing_voices"] == ["inventada"]
-    assert bad_voice["errors"][0]["line"] == 5  # primera línea de texto de esa voz
+    assert bad_voice["errors"][0]["line"] == 5  # first text line of that voice
     lines = sorted(e["line"] for e in bad_media["errors"])
     assert lines == [1, 2, 4]
 
@@ -161,13 +162,15 @@ def test_generate_podcast_dummy_progress_and_files(tmp_path: Path) -> None:
     assert out.is_file() and out.parent == (tmp_path / "out").resolve()
     assert out.name == "prueba.mp3"
     assert 1.0 < g["duration_seconds"] < 30 and g["generation_seconds"] >= 0
-    assert "license_notice" not in g  # dummy no es un motor no comercial
+    assert "license_notice" not in g  # dummy is not a non-commercial engine
     assert Path(g["script_path"]).read_text(encoding="utf-8") == SCRIPT_OK
-    # progreso por segmento, estrictamente creciente, terminando en el total
+    # progress per segment, strictly increasing, ending at the total
     values = [p for p, _, _ in progress]
     assert len(progress) >= 5 and values == sorted(set(values))
     assert progress[-1][0] == progress[-1][1]
-    assert any("Sintetizando [carlos]" in (m or "") for _, _, m in progress)
+    # the per-segment message comes from the assembler ("Synthesizing [carlos] ..."); only the
+    # voice name is checked so the test does not depend on that message's language
+    assert any("[carlos]" in (m or "") for _, _, m in progress)
     a = _json(again)
     assert Path(a["output_path"]).name == "prueba.wav"
     assert traversal.isError and "output_name" in traversal.content[0].text
@@ -201,7 +204,7 @@ def test_generate_from_file_and_job_polling(tmp_path: Path) -> None:
 
 
 def _raw_session(tmp: Path, calls: list[dict[str, Any]], timeout: float = 120) -> list[str]:
-    """Habla JSON-RPC "a mano" y devuelve TODAS las líneas de stdout del servidor."""
+    """Speak JSON-RPC "by hand" and return ALL the lines the server wrote to stdout."""
     msgs: list[dict[str, Any]] = [
         {"jsonrpc": "2.0", "id": 0, "method": "initialize",
          "params": {"protocolVersion": "2025-06-18", "capabilities": {},
@@ -250,7 +253,7 @@ def _assert_clean(lines: list[str]) -> list[dict[str, Any]]:
     parsed = []
     for line in lines:
         assert line.endswith("\n"), repr(line)
-        parsed.append(json.loads(line))  # cualquier "print" de una biblioteca rompería esto
+        parsed.append(json.loads(line))  # any library "print" would break this
         assert parsed[-1]["jsonrpc"] == "2.0"
     return parsed
 
@@ -300,7 +303,7 @@ def test_generate_podcast_f5_real(tmp_path: Path) -> None:
          "arguments": {"script": "[voz:ana]\nHola, esto es una prueba real del servidor MCP.\n",
                        "output_name": "f5_real", "engine": "f5", "wait_seconds": 300}},
     ], timeout=300)
-    parsed = _assert_clean(lines)  # torch / f5 no deben ensuciar stdout
+    parsed = _assert_clean(lines)  # torch / f5 must not pollute stdout
     result = next(p for p in parsed if p.get("id") == 1)
     data = json.loads(result["result"]["content"][0]["text"])
     assert data["status"] == "done", data

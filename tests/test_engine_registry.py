@@ -1,4 +1,4 @@
-"""Registro de motores: integrados, entry points simulados y registro en tiempo de ejecución."""
+"""Engine registry: built-in engines, simulated entry points and runtime registration."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 
 
 class FakeEngine:
-    """Motor mínimo de terceros (lo que publicaría podcast-tts-miengine)."""
+    """Minimal third-party engine (what podcast-tts-myengine would publish)."""
 
     name = "fake"
     kind = "cloud"
@@ -49,7 +49,7 @@ class FakeEngine:
 
 @pytest.fixture
 def fake_plugin(monkeypatch):
-    """Simula un paquete instalado que declara entry points en ``podcast_tts.engines``."""
+    """Simulate an installed package that declares entry points in ``podcast_tts.engines``."""
     module = types.ModuleType("podcast_tts_fakeplugin")
     module.FakeEngine = FakeEngine
 
@@ -97,7 +97,7 @@ def test_builtin_licenses() -> None:
     assert engine_license("xtts").commercial_use is False
     assert engine_license("dummy").commercial_use is True
     for name in ("elevenlabs", "azure", "openai"):
-        assert engine_license(name).commercial_use in (True, "depende del plan")
+        assert engine_license(name).commercial_use in (True, "depends on plan")
     from podcast_tts.engines.f5 import F5Engine
     from podcast_tts.engines.xtts import XTTSEngine
 
@@ -108,12 +108,12 @@ def test_builtin_licenses() -> None:
 def test_entry_point_plugin(fake_plugin) -> None:
     names = engine_names()
     assert "fake" in names and "broken" in names and "nolicense" in names
-    assert names.count("f5") == 1  # un plugin no puede suplantar a un integrado
+    assert names.count("f5") == 1  # a plugin cannot impersonate a built-in engine
     eng = get_engine("fake")
     assert isinstance(eng, FakeEngine) and get_engine("FAKE") is eng
     assert get_engine("fake", gain=0.5).gain == 0.5
-    # Los guiones aceptan el motor del plugin
-    script = parse_script("---\nengine: fake\n---\n[voz:ana engine=fake] Hola")
+    # Scripts accept the plugin engine
+    script = parse_script("---\nengine: fake\n---\n[voice:ana engine=fake] Hello")
     assert script.meta.default_engine == "fake"
 
     info = engine_info(check_cuda=False)
@@ -123,11 +123,11 @@ def test_entry_point_plugin(fake_plugin) -> None:
     assert info["fake"]["configured"] is False
     assert info["fake"]["missing_config"] == ["FAKE_TTS_KEY"]
     assert info["broken"]["importable"] is False and "podcast_tts_no_existe" in info["broken"]["error"]
-    # Sin license_info -> se trata como no comercial
+    # No license_info -> treated as non-commercial
     assert engine_license("nolicense").commercial_use is False
-    assert info["nolicense"]["license"] == "no declarada"
+    assert info["nolicense"]["license"] == "not declared"
 
-    with pytest.raises(EngineError, match="no se pudo cargar el motor 'broken'"):
+    with pytest.raises(EngineError, match="could not load engine 'broken'"):
         get_engine("broken")
 
 
@@ -136,8 +136,8 @@ def test_plugin_disappears_after_refresh(fake_plugin, monkeypatch) -> None:
     monkeypatch.setattr(metadata, "entry_points", lambda **kw: metadata.EntryPoints([]))
     refresh_engines()
     assert "fake" not in engine_names()
-    with pytest.raises(ScriptParseError, match="motor desconocido 'fake'"):
-        parse_script("[voz:ana engine=fake] Hola")
+    with pytest.raises(ScriptParseError, match="unknown engine 'fake'"):
+        parse_script("[voice:ana engine=fake] Hello")
 
 
 def test_register_engine_runtime() -> None:
@@ -145,11 +145,11 @@ def test_register_engine_runtime() -> None:
     try:
         assert "mio" in engine_names()
         assert get_engine("mio").sample_rate == 16000
-        with pytest.raises(EngineError, match="ya hay"):
+        with pytest.raises(EngineError, match="already an engine"):
             register_engine("mio", FakeEngine)
         register_engine("mio", "podcast_tts.engines.dummy:DummyEngine", replace=True)
         assert get_engine("mio").name == "dummy"
-        with pytest.raises(EngineError, match="integrado"):
+        with pytest.raises(EngineError, match="built-in"):
             register_engine("f5", FakeEngine)
     finally:
         unregister_engine("mio")
@@ -159,14 +159,14 @@ def test_register_engine_runtime() -> None:
 def test_register_engine_rejects_non_engines() -> None:
     register_engine("roto", lambda: object())
     try:
-        with pytest.raises(EngineError, match="protocolo"):
+        with pytest.raises(EngineError, match="protocol"):
             get_engine("roto")
     finally:
         unregister_engine("roto")
 
 
 def test_import_does_not_load_torch() -> None:
-    """Importar engines (y consultar el registro sin GPU) no importa torch."""
+    """Importing engines (and querying the registry without a GPU) does not import torch."""
     code = (
         "import sys; sys.path.insert(0, r'%s'); import podcast_tts.engines as e; "
         "e.engine_names(); e.engine_info(check_cuda=False); import podcast_tts.cli; "
@@ -178,5 +178,5 @@ def test_import_does_not_load_torch() -> None:
 
 
 def test_unknown_engine_message() -> None:
-    with pytest.raises(EngineError, match="válidos: f5, xtts, dummy, elevenlabs"):
+    with pytest.raises(EngineError, match="valid: f5, xtts, dummy, elevenlabs"):
         get_engine("nope")

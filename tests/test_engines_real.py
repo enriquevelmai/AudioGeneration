@@ -1,6 +1,6 @@
-"""Pruebas con los modelos reales (lentas): `pytest -m slow`.
+"""Tests with the real models (slow): `pytest -m slow`.
 
-Usan las voces de ejemplo de ``voices/`` (ver scripts/make_sample_voices.py).
+They use the sample voices in ``voices/`` (see scripts/make_sample_voices.py).
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ pytestmark = pytest.mark.slow
 
 def _voice(name: str):
     if not (default_voices_dir() / name / "voice.json").is_file():
-        pytest.skip(f"falta la voz de ejemplo '{name}' (ejecuta scripts/make_sample_voices.py)")
+        pytest.skip(f"sample voice '{name}' is missing (run scripts/make_sample_voices.py)")
     return get_voice(name)
 
 
@@ -36,7 +36,7 @@ def _check(audio: np.ndarray, sr: int) -> None:
     assert audio.ndim == 1
     assert audio.size / sr > 0.5
     assert np.isfinite(audio).all()
-    assert float(np.abs(audio).max()) > 0.01  # no es silencio
+    assert float(np.abs(audio).max()) > 0.01  # not silence
 
 
 @pytest.mark.parametrize(("voice", "lang", "text"), [
@@ -49,8 +49,8 @@ def test_f5_synthesizes(voice: str, lang: str, text: str) -> None:
 
 
 @pytest.mark.parametrize(("voice", "lang", "text"), [
-    ("david", "en", "Hello, this is a quick test of the XTTS engine."),  # speaker integrado
-    ("carlos", "es", "Hola, esto es una prueba de clonación con XTTS."),  # clonación con ref.wav
+    ("david", "en", "Hello, this is a quick test of the XTTS engine."),  # built-in speaker
+    ("carlos", "es", "Hola, esto es una prueba de clonación con XTTS."),  # cloning from ref.wav
 ])
 def test_xtts_synthesizes(voice: str, lang: str, text: str) -> None:
     engine = get_engine("xtts")

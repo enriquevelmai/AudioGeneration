@@ -1,15 +1,15 @@
-"""Motor F5-TTS (clonación de voz a partir de ref.wav + ref.txt).
+"""F5-TTS engine (voice cloning from ref.wav + ref.txt).
 
-- Inglés (y cualquier ``lang`` "en"): modelo oficial ``F5TTS_v1_Base``.
-- Castellano (``lang == "es"``): finetune comunitario ``jpgallegoar/F5-Spanish``
-  (arquitectura ``F5TTS_Base``, licencia CC-BY-NC-4.0), descargado con
-  ``cached_path`` a la caché de Hugging Face.
-- Otros idiomas: no soportados (el modelo base solo conoce inglés y chino);
-  se lanza :class:`EngineError` recomendando XTTS.
+- English (and any "en" ``lang``): official ``F5TTS_v1_Base`` model.
+- Spanish (``lang == "es"``): community finetune ``jpgallegoar/F5-Spanish``
+  (``F5TTS_Base`` architecture, CC-BY-NC-4.0 license), downloaded with
+  ``cached_path`` into the Hugging Face cache.
+- Other languages: not supported (the base model only knows English and Chinese);
+  :class:`EngineError` is raised recommending XTTS.
 
-Los modelos se cargan de forma perezosa en la primera síntesis que los
-necesita y se comparten entre instancias (uno por proceso). Ambos caben a la
-vez en VRAM (~2 GB cada uno).
+Models are loaded lazily on the first synthesis that needs them and are
+shared between instances (one per process). Both fit in VRAM at the same
+time (~2 GB each).
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 SAMPLE_RATE = 24000
 SUPPORTED_LANGS = ("es", "en")
 
-# clave -> (model cfg, ckpt hf://, vocab hf://)
+# key -> (model cfg, ckpt hf://, vocab hf://)
 _MODEL_SPECS: dict[str, tuple[str, str, str]] = {
     "en": ("F5TTS_v1_Base", "", ""),
     "es": (
@@ -46,12 +46,12 @@ _MODEL_SPECS: dict[str, tuple[str, str, str]] = {
     ),
 }
 
-_models: dict[str, Any] = {}  # clave -> f5_tts.api.F5TTS
+_models: dict[str, Any] = {}  # key -> f5_tts.api.F5TTS
 _lock = threading.Lock()
 
 
 def loaded_models() -> list[str]:
-    """Claves ("es", "en") de los modelos F5 ya cargados en este proceso."""
+    """Keys ("es", "en") of the F5 models already loaded in this process."""
     return sorted(_models)
 
 
@@ -62,7 +62,7 @@ def _device() -> str:
 
 
 def _load_model(key: str) -> Any:
-    """Carga (una sola vez por proceso) el modelo F5 para ``key``."""
+    """Load (only once per process) the F5 model for ``key``."""
     with _lock:
         if key in _models:
             return _models[key]
@@ -77,15 +77,15 @@ def _load_model(key: str) -> Any:
 
                 ckpt = str(cached_path(ckpt_uri))
                 vocab = str(cached_path(vocab_uri))
-            with contextlib.redirect_stdout(io.StringIO()):  # f5_tts imprime rutas/vocab al cargar
+            with contextlib.redirect_stdout(io.StringIO()):  # f5_tts prints paths/vocab while loading
                 model = F5TTS(model=model_name, ckpt_file=ckpt, vocab_file=vocab, device=_device())
         except ImportError as exc:
-            raise EngineError(f"F5-TTS no está instalado ({exc}). Ejecuta bats/install.bat.") from exc
-        except Exception as exc:  # descarga, CUDA, ficheros corruptos...
+            raise EngineError(f"F5-TTS is not installed ({exc}). Run bats/install.bat.") from exc
+        except Exception as exc:  # download, CUDA, corrupt files...
             raise EngineError(
-                f"no se pudo cargar el modelo F5-TTS '{model_name}' para '{key}': {exc}"
+                f"could not load F5-TTS model '{model_name}' for '{key}': {exc}"
             ) from exc
-        log.info("F5-TTS: modelo %s (%s) cargado en %.1f s", model_name, key, time.perf_counter() - t0)
+        log.info("F5-TTS: model %s (%s) loaded in %.1f s", model_name, key, time.perf_counter() - t0)
         _models[key] = model
         return model
 
@@ -98,12 +98,12 @@ _transcripts: dict[tuple[str, int, int], str] = {}
 
 
 def _transcribe_reference(ref_wav: str, lang: str) -> str:
-    """Transcribe la referencia con Whisper (lo que haría F5 con ``ref_text=""``).
+    """Transcribe the reference with Whisper (what F5 would do with ``ref_text=""``).
 
-    F5 pasa la *ruta* al pipeline ASR de transformers, que en este entorno intenta
-    decodificarla con torchcodec y falla en Windows (DLL de FFmpeg compartidas).
-    Aquí se transcribe el clip ya preprocesado por F5 (recortado a ~12 s) como
-    array numpy y con torchcodec desactivado para el pipeline. Se cachea por clip.
+    F5 passes the *path* to the transformers ASR pipeline, which in this environment
+    tries to decode it with torchcodec and fails on Windows (shared FFmpeg DLLs).
+    Here the clip already preprocessed by F5 (trimmed to ~12 s) is transcribed as a
+    numpy array with torchcodec disabled for the pipeline. Cached per clip.
     """
     import os
 
@@ -123,26 +123,26 @@ def _transcribe_reference(ref_wav: str, lang: str) -> str:
         text = transcribe({"raw": audio.mean(axis=1), "sampling_rate": sr}, lang or None)
     except Exception as exc:
         raise EngineError(
-            f"no se pudo transcribir automáticamente {ref_wav} con Whisper: {exc}. "
-            "Escribe la transcripción exacta en ref.txt."
+            f"could not automatically transcribe {ref_wav} with Whisper: {exc}. "
+            "Write the exact transcript in ref.txt."
         ) from exc
     text = (text or "").strip()
     if not text:
-        raise EngineError(f"Whisper no reconoció texto en {ref_wav}; añade ref.txt a mano.")
-    log.warning("Transcripción automática de %s: %r", ref_wav, text)
+        raise EngineError(f"Whisper recognized no text in {ref_wav}; add ref.txt by hand.")
+    log.warning("Automatic transcript of %s: %r", ref_wav, text)
     _transcripts[key] = text
     return text
 
 
 class F5Engine:
-    """Motor F5-TTS.
+    """F5-TTS engine.
 
-    Parámetros:
-        seed: semilla para reproducibilidad (``None`` = aleatoria en cada frase).
-        nfe_step: pasos del ODE (32 por defecto; más = más calidad y más lento).
-        cross_fade_duration: crossfade entre lotes internos de F5.
-        empty_cache: llama a ``torch.cuda.empty_cache()`` tras cada síntesis.
-        preload: carga ya los modelos indicados (p.ej. ``("es", "en")``).
+    Parameters:
+        seed: seed for reproducibility (``None`` = random for each sentence).
+        nfe_step: ODE steps (32 by default; more = higher quality and slower).
+        cross_fade_duration: crossfade between F5's internal batches.
+        empty_cache: call ``torch.cuda.empty_cache()`` after each synthesis.
+        preload: load the given models right away (e.g. ``("es", "en")``).
     """
 
     name = "f5"
@@ -150,8 +150,8 @@ class F5Engine:
         name="CC-BY-NC-4.0",
         url="https://creativecommons.org/licenses/by-nc/4.0/",
         commercial_use=False,
-        notes="Pesos de F5TTS_v1_Base (SWivid/F5-TTS) y jpgallegoar/F5-Spanish: solo uso no "
-              "comercial y con atribución. El código de F5-TTS es MIT, pero los pesos no.",
+        notes="F5TTS_v1_Base (SWivid/F5-TTS) and jpgallegoar/F5-Spanish weights: non-commercial "
+              "use only, with attribution. The F5-TTS code is MIT, but the weights are not.",
     )
 
     def __init__(
@@ -175,7 +175,7 @@ class F5Engine:
 
     @property
     def cache_tag(self) -> str:
-        """Modelos (cfg + checkpoint), versión de f5-tts y parámetros de inferencia."""
+        """Models (cfg + checkpoint), f5-tts version and inference parameters."""
         from .base import package_version
 
         models = ";".join(f"{k}={m}:{c}" for k, (m, c, _v) in sorted(_MODEL_SPECS.items()))
@@ -187,8 +187,8 @@ class F5Engine:
         code = (lang or "").lower().split("-")[0].split("_")[0]
         if code not in SUPPORTED_LANGS:
             raise EngineError(
-                f"F5-TTS solo admite castellano (es) e inglés (en); el idioma '{lang}' no está "
-                "soportado. Usa el motor xtts (engine=xtts) para ese idioma."
+                f"F5-TTS only supports Spanish (es) and English (en); language '{lang}' is not "
+                "supported. Use the xtts engine (engine=xtts) for that language."
             )
         return code
 
@@ -207,14 +207,14 @@ class F5Engine:
         key = self._model_key(lang)
         if not voice.has_ref:
             raise EngineError(
-                f"la voz '{voice.name}' no tiene clip de referencia ({voice.ref_wav}); F5-TTS lo "
-                "necesita. Añade un ref.wav o usa el motor xtts con un speaker integrado."
+                f"voice '{voice.name}' has no reference clip ({voice.ref_wav}); F5-TTS needs "
+                "one. Add a ref.wav or use the xtts engine with a built-in speaker."
             )
         ref_text = voice.ref_text
         if not ref_text:
             log.warning(
-                "La voz '%s' no tiene ref.txt: F5-TTS transcribirá el clip con Whisper "
-                "(descarga ~1.6 GB la primera vez y es menos fiable). Añade la transcripción exacta.",
+                "Voice '%s' has no ref.txt: F5-TTS will transcribe the clip with Whisper "
+                "(downloads ~1.6 GB the first time and is less reliable). Add the exact transcript.",
                 voice.name,
             )
             ref_text = _transcribe_reference(str(voice.ref_wav), voice.lang or key)
@@ -225,7 +225,7 @@ class F5Engine:
         import torch
 
         try:
-            # redirect_stdout: infer_process hace print() de ref_text/gen_text en cada lote
+            # redirect_stdout: infer_process print()s ref_text/gen_text on every batch
             with torch.inference_mode(), contextlib.redirect_stdout(io.StringIO()):
                 wav, _sr, _spec = model.infer(
                     ref_file=str(voice.ref_wav),
@@ -242,7 +242,7 @@ class F5Engine:
             raise
         except Exception as exc:
             raise EngineError(
-                f"F5-TTS falló al sintetizar con la voz '{voice.name}' ({lang}): {exc}"
+                f"F5-TTS failed to synthesize with voice '{voice.name}' ({lang}): {exc}"
             ) from exc
         finally:
             if self.empty_cache and torch.cuda.is_available():
@@ -251,5 +251,5 @@ class F5Engine:
 
         audio = np.asarray(wav, dtype=np.float32).reshape(-1)
         if audio.size == 0:
-            raise EngineError(f"F5-TTS devolvió audio vacío para: {text[:60]!r}")
+            raise EngineError(f"F5-TTS returned empty audio for: {text[:60]!r}")
         return np.clip(audio, -1.0, 1.0)
