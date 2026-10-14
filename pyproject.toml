@@ -5,8 +5,32 @@ build-backend = "hatchling.build"
 [project]
 name = "podcast-tts"
 version = "0.1.0"
-description = "Generador local de podcasts a partir de guiones Markdown con F5-TTS y XTTS v2"
+description = "Turn Markdown scripts into multi-voice podcasts with local voice cloning (F5-TTS, XTTS v2) or commercial cloud TTS (ElevenLabs, Azure AI Speech, OpenAI)."
 readme = "README.md"
+authors = [{ name = "enriquevelmai" }]
+# MIT cubre solo el código. Los pesos de los modelos tienen sus propias licencias
+# (mayoritariamente NO comerciales): ver MODELS_AND_LICENSES.md.
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = [
+    "tts", "text-to-speech", "podcast", "voice-cloning", "f5-tts", "xtts",
+    "coqui", "elevenlabs", "azure-speech", "openai", "gradio", "markdown", "spanish",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: GPU :: NVIDIA CUDA",
+    "Environment :: Web Environment",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "Natural Language :: Spanish",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
 requires-python = ">=3.11,<3.12"
 # Núcleo SIN torch: parser, motor dummy, CLI, UI, gestión de modelos y tests rápidos.
 dependencies = [
@@ -38,6 +62,11 @@ local = [
 cuda = ["torch==2.8.*", "torchaudio==2.8.*"]
 cpu = ["torch==2.8.*", "torchaudio==2.8.*"]
 dev = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/enriquevelmai/AudioGeneration"
+Issues = "https://github.com/enriquevelmai/AudioGeneration/issues"
+Releases = "https://github.com/enriquevelmai/AudioGeneration/releases"
 
 [project.scripts]
 podcast-tts = "podcast_tts.cli:main"

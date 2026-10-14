@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Models and licenses
+    url: https://github.com/enriquevelmai/AudioGeneration/blob/main/MODELS_AND_LICENSES.md
+    about: Questions about commercial use, model licenses or voice cloning? Read this first (it is not legal advice).
+  - name: Troubleshooting
+    url: https://github.com/enriquevelmai/AudioGeneration#troubleshooting
+    about: CUDA, ffmpeg, SmartScreen, WebView2 and other common problems.

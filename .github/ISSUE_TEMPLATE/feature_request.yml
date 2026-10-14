@@ -1,0 +1,54 @@
+name: Feature request
+description: Suggest an idea or an improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Requests can be written in English or Spanish.
+        New TTS engines can often be published as an independent plugin, see
+        [docs/ENGINES_PLUGINS.md](https://github.com/enriquevelmai/AudioGeneration/blob/main/docs/ENGINES_PLUGINS.md).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe what you are trying to do and what gets in the way today.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How you imagine it working (new script tag, CLI option, UI change, engine...).
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Script format
+        - Voices
+        - Engines / models
+        - Desktop app / web UI
+        - Command line
+        - Installation / updates
+        - Claude Code skill
+        - Documentation
+
+  - type: checkboxes
+    id: licensing
+    attributes:
+      label: Licensing
+      options:
+        - label: If this involves a new model or service, I have checked its license and terms of use.

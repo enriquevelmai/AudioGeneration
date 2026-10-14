@@ -1,309 +1,485 @@
-# podcast_tts
+<h1 align="center">
+  <img src="assets/icon.png" alt="" width="96"><br>
+  AudioGeneration
+</h1>
 
-Generador local de podcasts: escribes un guion en Markdown con etiquetas
-(`[voz:ana]`, `[pausa:1.5]`, `[musica:intro.mp3]`...) y obtienes un MP3 con
-voces clonadas a partir de clips cortos, todo en tu ordenador (GPU NVIDIA o CPU).
+<p align="center">
+  <a href="https://github.com/enriquevelmai/AudioGeneration/releases/latest"><img src="https://img.shields.io/github/v/release/enriquevelmai/AudioGeneration?color=7c3aed" alt="Release"></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d6" alt="Platform: Windows 10 | 11"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/code%20license-MIT-green" alt="Code license: MIT"></a>
+  <a href="MODELS_AND_LICENSES.md"><img src="https://img.shields.io/badge/models-non--commercial%20by%20default-orange" alt="Models: non-commercial by default"></a>
+  <a href="https://www.python.org/downloads/release/python-3110/"><img src="https://img.shields.io/badge/python-3.11-3776ab" alt="Python 3.11"></a>
+  <a href="https://github.com/enriquevelmai/AudioGeneration/actions/workflows/ci.yml"><img src="https://github.com/enriquevelmai/AudioGeneration/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
 
-- Motores TTS: **F5-TTS** (por defecto) y **XTTS v2** (Coqui), seleccionables por voz.
-- Música de fondo con *ducking*, efectos, pausas y normalización a ~-16 LUFS.
-- Caché de síntesis: al regenerar solo se sintetizan las frases que han cambiado.
-- CLI en castellano y UI web local (Gradio).
+<p align="center">
+  <b>English</b> · <a href="README.es.md">Castellano</a>
+</p>
 
-## Inicio rápido
+**Write a script in Markdown, get a podcast.** AudioGeneration turns a plain text script with
+simple tags (`[voz:ana]`, `[pausa:1]`, `[musica:intro.mp3]`) into a finished MP3 with several
+voices, music and sound effects, cloning voices from a 10-second clip, entirely on your own PC.
 
-En Windows 10/11, desde la carpeta del repositorio (doble clic o en `cmd`):
+<p align="center">
+  <img src="docs/img/app.png" alt="AudioGeneration desktop app: script editor, validation table and audio player" width="90%">
+</p>
+
+> [!IMPORTANT]
+> **The code is MIT, but the default voice models are non-commercial.** F5-TTS / F5-Spanish
+> (CC-BY-NC-4.0) and XTTS v2 (Coqui Public Model License) can only be used for non-commercial
+> audio, and so can the sample voices. For commercial work use a commercial engine (ElevenLabs on a
+> paid plan, Azure AI Speech, OpenAI). Only clone voices with their owner's consent. Details in
+> [MODELS_AND_LICENSES.md](MODELS_AND_LICENSES.md) (not legal advice).
+
+---
+
+## Contents
+
+- [Features](#features)
+- [Quick start (for everyone)](#quick-start-for-everyone)
+- [Install with Git](#install-with-git)
+- [Usage](#usage)
+- [Script format](#script-format)
+- [Voices](#voices)
+- [Engines and commercial use](#engines-and-commercial-use)
+- [Models](#models)
+- [Claude Code integration](#claude-code-integration)
+- [Updating](#updating)
+- [Troubleshooting](#troubleshooting)
+- [Project structure](#project-structure)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Features
+
+- **Markdown scripts**: one `.md` file per episode, with tags for speakers, pauses, music and
+  sound effects. Easy to write by hand, to keep in Git, or to have an assistant draft for you.
+- **Local voice cloning**: give it a 5-15 s clip and its transcript and the voice is ready.
+  [F5-TTS](https://github.com/SWivid/F5-TTS) (default; native English and Spanish models) and
+  [XTTS v2](https://huggingface.co/coqui/XTTS-v2) (17 languages, 58 built-in speakers) run on your
+  NVIDIA GPU, or on the CPU if you have none.
+- **Commercial cloud engines**: ElevenLabs, Azure AI Speech and OpenAI with your own API key, for
+  audio you can publish commercially.
+- **Multi-voice and multilingual**: switch speaker, language, speed or engine on any line.
+- **Studio finish**: background music with automatic ducking, fades, sound effects, paragraph
+  pauses and loudness normalization to -16 LUFS. MP3 or WAV output.
+- **Fast re-takes**: a synthesis cache means that after editing a script only the changed
+  sentences are generated again.
+- **Three ways to use it**: a desktop app, the same interface in your browser, or a full command
+  line. The interface and the CLI are in Spanish.
+- **Honest about licenses**: every engine declares its license, `podcast-tts engines` shows
+  which ones allow commercial use, and you get a notice when a script uses a non-commercial one.
+- **Extensible**: add engines as plugins without touching this repository.
+- **Easy install and updates**: a launcher that installs everything on first run, models that
+  download themselves, and one-click updates.
+- **Optional Claude Code skill**: ask the Claude Code assistant for "a podcast about..." and it
+  writes the script and generates the audio with this project.
+
+---
+
+## Quick start (for everyone)
+
+1. Download **`AudioGeneration-v1.0.0-windows.zip`** from the
+   [**latest release**](https://github.com/enriquevelmai/AudioGeneration/releases/latest).
+2. Unzip it into a folder of your choice, for example `Documents\AudioGeneration`. Avoid folders
+   that need administrator rights, such as `Program Files`.
+3. Double-click **`AudioGeneration.exe`**.
+4. **The first time** it installs everything it needs by itself: Python, the dependencies and, if
+   you have an NVIDIA GPU, PyTorch with CUDA. It takes about **10-15 minutes** and **about 6-7 GB** with a
+   GPU, depending on your connection. It can also install `ffmpeg`, download the voice models and
+   create Desktop and Start menu shortcuts.
+5. The app opens. Click **Generar** on the example script and listen to your first episode.
+
+From then on, `AudioGeneration.exe` checks for updates and opens the app in a few seconds.
+
+> [!NOTE]
+> **"Windows protected your PC"?** The launcher is not code-signed, so Windows SmartScreen may warn
+> you the first time. Click **More info → Run anyway**. If you prefer not to run the `.exe`, use
+> [the Git installation](#install-with-git) and the `.bat` scripts instead.
+
+---
+
+## Install with Git
 
 ```bat
-bats\install.bat        :: instala uv, Python 3.11 y las dependencias en .venv (detecta GPU NVIDIA)
-bats\run.bat            :: abre la UI en el navegador (http://127.0.0.1:7860)
-bats\update.bat         :: git pull + dependencias + modelos al día
+git clone https://github.com/enriquevelmai/AudioGeneration.git
+cd AudioGeneration
+bats\install.bat
 ```
 
-Por línea de comandos (fija antes `set PYTHONUTF8=1` y `set COQUI_TOS_AGREED=1`, o
-`$env:PYTHONUTF8='1'; $env:COQUI_TOS_AGREED='1'` en PowerShell):
+`bats\install.bat` needs no administrator rights. It:
+
+1. installs [uv](https://docs.astral.sh/uv/) if needed and Python 3.11 managed by uv;
+2. detects an NVIDIA GPU with `nvidia-smi` and installs PyTorch with CUDA 12.6, or the CPU build;
+3. creates an isolated `.venv` inside the folder with exactly the versions in `uv.lock`;
+4. checks `ffmpeg` and offers to install it with `winget` if it is missing;
+5. offers to download the models now, create shortcuts, and install the Claude Code skill.
+
+Options: `/y` answers yes to everything (unattended), `/cpu` or `/cuda` force the PyTorch build.
+You can also build `AudioGeneration.exe` yourself with `bats\build_launcher.bat`.
+
+### Requirements
+
+| | |
+|---|---|
+| **OS** | Windows 10 or 11, 64-bit |
+| **GPU** | Optional. An NVIDIA GPU with a recent driver makes synthesis many times faster (about 0.2-0.3× real time on an RTX 4080). Without one, everything runs on the CPU, much more slowly. Cloud engines need no GPU |
+| **Disk** | ~6-8 GB for the installation with CUDA (less with the CPU build), plus ~4.5 GB for the models, which are stored outside the project folder |
+| **ffmpeg** | Needed to read and write MP3. The installer offers to install it |
+| **Internet** | For the first installation, the first model download, updates and the cloud engines |
+
+---
+
+## Usage
+
+### Desktop app
+
+Double-click `AudioGeneration.exe`, the **AudioGeneration** shortcut, or `bats\run.bat`. The
+interface opens in its own window. If the desktop component (pywebview) is not available,
+`run.bat` opens it in your browser instead.
+
+The app has four tabs (labels are in Spanish):
+
+- **Guion → Podcast**: script editor with the example preloaded, engine selector, output format,
+  **Validar** (table of segments and voices, with errors by line number) and **Generar** (progress
+  bar, log, player and download link). Files are saved in `output/`.
+- **Voces**: your voices, their reference clip, **Probar voz** to hear a sentence, and
+  **Añadir voz** to upload or record a clip with the microphone, or pick a built-in XTTS speaker.
+- **Sistema**: GPU and CUDA status, available engines, folders and sizes, cache and generated files.
+- **Ajustes**: API keys for the cloud engines and the license of every engine.
+
+### In the browser
+
+`bats\run_web.bat` starts the same interface at <http://127.0.0.1:7860> and opens your browser.
+
+### Command line
+
+Open a terminal in the project folder and activate the environment with `.venv\Scripts\activate`
+(cmd) or `.venv\Scripts\Activate.ps1` (PowerShell), or call `.venv\Scripts\podcast-tts.exe`
+directly; `python -m podcast_tts` works too. Set two variables first:
 
 ```powershell
-.venv\Scripts\python.exe scripts\check_env.py        # debe terminar en "TODO OK"
-.venv\Scripts\podcast-tts.exe generate examples\ejemplo.md -o output\episodio.mp3
-.venv\Scripts\podcast-tts.exe models status          # modelos descargados (o python -m podcast_tts ...)
-# Desde Claude Code: pide "genera un podcast..." y se activa la skill podcast-tts (docs/SKILL.md)
+$env:PYTHONUTF8 = '1'; $env:COQUI_TOS_AGREED = '1'   # cmd: set PYTHONUTF8=1 & set COQUI_TOS_AGREED=1
 ```
-
-## Instalación
-
-Requisitos:
-
-- Windows 10/11 x64. GPU NVIDIA recomendada (driver reciente; probado en RTX 4080 SUPER 16 GB,
-  ~5 GB de VRAM con los tres modelos cargados). Sin GPU funciona en CPU, pero muy lento.
-- Nada más: `bats\install.bat` instala [uv](https://docs.astral.sh/uv/) (sin admin) y Python 3.11
-  gestionado por uv, en un entorno aislado `.venv` dentro del repositorio.
-- `ffmpeg` en el `PATH` para leer/escribir MP3. Si falta, el instalador ofrece instalarlo con
-  `winget` (`Gyan.FFmpeg`).
-- ~5 GB de disco para los modelos (fuera del repositorio) y ~6 GB para `.venv` con CUDA.
-
-### `bats\install.bat`
-
-1. Instala uv si no está (instalador oficial de astral, en `%USERPROFILE%\.local\bin`).
-2. `uv python install 3.11`.
-3. Detecta GPU NVIDIA con `nvidia-smi`: si la hay usa PyTorch CUDA 12.6; si no, PyTorch CPU.
-4. `uv sync --locked --extra local --extra cuda|cpu --extra dev` (exactamente lo de `uv.lock`) y
-   guarda los extras elegidos en `.venv\podcast-tts-extras.txt` (los reutiliza `update.bat`).
-5. Comprueba ffmpeg y el entorno (`scripts\check_env.py`).
-6. Ofrece descargar ya los modelos (`podcast-tts models download`).
-7. Si existe `%USERPROFILE%\.claude`, ofrece instalar la skill de Claude Code.
-
-Opciones: `/y` (o `PODCAST_TTS_NONINTERACTIVE=1`) responde que sí a todo y no hace `pause`;
-`/cpu` o `/cuda` (o `PODCAST_TTS_VARIANT`) fuerzan la variante de PyTorch;
-`PODCAST_TTS_DOWNLOAD_MODELS=0|1` y `PODCAST_TTS_INSTALL_SKILL=0|1` fijan esas respuestas.
-Códigos de salida: 0 bien, 1 error, 2 instalado pero `check_env.py` encontró problemas.
-
-Otros scripts de `bats\`:
-
-- `run.bat`: abre la UI (los argumentos extra van a `podcast_tts ui`, p.ej. `--port 7861`).
-- `update.bat`: `git pull --ff-only` (si es un clon con remoto), `uv sync` con los mismos extras
-  y `podcast-tts models update` (solo los modelos ya descargados).
-- `install_gpu.bat`: pasa de PyTorch CPU a CUDA sin reinstalar el resto (instalaste sin GPU, o
-  con el driver roto, y ahora la tienes).
-
-`scripts\setup.ps1` se mantiene por compatibilidad y solo llama a `bats\install.bat /y`
-(`-Smoke` descarga modelos y genera audios de prueba; `-Recreate` borra `.venv` antes).
-
-### Dependencias por capas (extras de uv)
-
-| Capa | Qué incluye | Para qué |
-|---|---|---|
-| núcleo | numpy, pydub, gradio, pyyaml, scipy, pyloudnorm, huggingface-hub | parser, motor `dummy`, CLI, UI, `models`, tests rápidos. Sin torch |
-| `local` | f5-tts, coqui-tts, transformers<5, torch/torchaudio 2.8, soundfile | motores F5-TTS y XTTS v2 |
-| `cuda` / `cpu` | torch/torchaudio 2.8 desde `download.pytorch.org/whl/cu126` o `/cpu` | variante de PyTorch (excluyentes) |
-| `dev` | pytest | tests |
-
-Equivalente manual con uv:
 
 ```powershell
-uv sync --extra local --extra cuda --extra dev   # GPU NVIDIA
-uv sync --extra local --extra cpu --extra dev    # sin GPU
-uv sync --extra dev                              # solo núcleo (motor dummy, UI, tests rápidos)
+# Generate an episode (MP3 or WAV, by extension)
+podcast-tts generate examples\ejemplo.md -o output\episode.mp3
+
+# Check timing and mixing without models or GPU (tones instead of voices)
+podcast-tts generate examples\ejemplo.md -o output\test.mp3 --engine dummy
+
+# See how a script is interpreted (JSON), without synthesizing
+podcast-tts parse examples\english_episode.md
+
+# Voices
+podcast-tts voices list
+podcast-tts voices add maria C:\recordings\maria.m4a --text "Exact transcript of the clip." --lang es --engine f5
+podcast-tts voices add narrator --engine xtts --xtts-speaker "Claribel Dervla" --lang en
+podcast-tts voices remove maria
+
+# Engines, licenses and API keys
+podcast-tts engines
+podcast-tts config set OPENAI_API_KEY        # asks for the value without echoing it
+podcast-tts config show                      # masked values
+
+# Models
+podcast-tts models list
+podcast-tts models status
+podcast-tts models download all
+
+# Interfaces
+podcast-tts desktop                          # desktop window
+podcast-tts ui --port 7861 --inbrowser       # browser; --host 0.0.0.0 for your LAN, --share for a public Gradio link
 ```
 
-### Modelos
+Useful `generate` options: `--engine` (force one engine for the whole script), `--voices-dir`,
+`--max-chars 250`, `--bitrate 192k`, `--sample-rate 44100`, `--lufs -16`, `--no-normalize`,
+`--no-cache`, `--cache-dir`, `-q`, `--no-license-notice`. Run `podcast-tts <command> --help` for
+the full list.
 
-No están en el repositorio: se descargan solos la primera vez que se usan, o antes con
-`podcast-tts models download [nombre|all]`. `models list` muestra repo, tamaño y licencia;
-`models status` si están descargados, dónde y cuánto ocupan; `models update` baja la última revisión.
+---
 
-| Modelo (`models`) | Repo Hugging Face | Uso | Caché | Tamaño | Licencia |
-|---|---|---|---|---|---|
-| `f5-base` | `SWivid/F5-TTS` (`F5TTS_v1_Base`) | F5, inglés | caché de HF (`HF_HOME`) | ~1.3 GB | CC-BY-NC-4.0 |
-| `f5-spanish` | `jpgallegoar/F5-Spanish` | F5, castellano | caché de HF | ~1.3 GB | CC-BY-NC-4.0 |
-| `vocos` | `charactr/vocos-mel-24khz` | vocoder de F5 | caché de HF | ~54 MB | MIT |
-| `xtts` | `coqui/XTTS-v2` | XTTS, 17 idiomas | `%LOCALAPPDATA%\tts` (`TTS_HOME`) | ~1.9 GB | CPML |
-| `whisper` (opcional) | `openai/whisper-large-v3-turbo` | solo si una voz F5 no tiene `ref.txt` | caché de HF | ~1.6 GB | MIT |
+## Script format
 
-La caché de HF es `%USERPROFILE%\.cache\huggingface\hub` salvo que se defina `HF_HOME`/`HF_HUB_CACHE`.
-
-> **Licencias (uso no comercial).** XTTS v2 se distribuye bajo la *Coqui Public Model
-> License* (CPML) y los pesos de F5-TTS y del finetune `jpgallegoar/F5-Spanish` bajo
-> CC-BY-NC-4.0: ninguno permite uso comercial. Al usar XTTS el programa acepta la CPML
-> automáticamente (`COQUI_TOS_AGREED=1`).
-
-### GPU o CPU
-
-Los motores usan `cuda` si PyTorch ve una GPU y, si no, `cpu` (con un aviso de que irá lento).
-`PODCAST_TTS_DEVICE=cpu|cuda` fuerza el dispositivo. La variante CUDA usa CUDA 12.6 (GPU desde
-la serie GTX 900 hasta RTX 40).
-
-Detalles de versiones, pins y problemas conocidos: [`docs/ENGINES.md`](docs/ENGINES.md).
-
-
-## Estructura
-
-```
-AudioGeneration/
-├── src/podcast_tts/
-│   ├── script_parser.py   # parser del guion -> Segments (+ JSON)
-│   ├── voices.py          # registro de voces en voices/
-│   ├── assembler.py       # síntesis + mezcla + normalización + exportación
-│   ├── cli.py             # python -m podcast_tts ...
-│   ├── ui.py              # UI Gradio (python -m podcast_tts ui)
-│   └── engines/
-│       ├── base.py        # protocolo TTSEngine
-│       ├── f5.py          # F5-TTS
-│       ├── xtts.py        # XTTS v2
-│       └── dummy.py       # motor de pruebas (tonos)
-├── voices/<nombre>/       # ref.wav + ref.txt + voice.json
-├── examples/ejemplo.md    # guion de ejemplo
-├── guiones/               # guiones del usuario (ejemplo_dialogo.md: diálogo es/en)
-├── bats/                  # install.bat, run.bat, update.bat, install_gpu.bat
-├── scripts/               # check_env.py, install_skill.ps1, setup.ps1 (llama a bats\install.bat), smoke_*.py
-├── skill/podcast-tts/     # skill de Claude Code (ver docs/SKILL.md)
-├── docs/                  # ENGINES.md, DECISIONS.md, SKILL.md
-├── tests/                 # pytest
-├── output/                # audios generados (ignorado por git)
-└── .cache/tts/            # caché de síntesis (ignorada por git)
-```
-
-## Formato del guion
-
-Un guion es un fichero `.md` en UTF-8. Opcionalmente empieza con un *front matter*:
+A script is a UTF-8 `.md` file. It can start with an optional front matter:
 
 ```markdown
 ---
-title: Mi episodio
-lang: es              # idioma por defecto del guion
-default_voice: ana    # voz para el texto sin etiqueta [voz:...]
-engine: f5            # motor por defecto (f5 | xtts)
-paragraph_pause: 0.4  # pausa entre párrafos (s)
+title: My episode
+lang: es              # default language
+default_voice: ana    # voice for text before the first [voz:] tag
+engine: f5            # default engine
+paragraph_pause: 0.4  # pause between paragraphs, in seconds
 ---
 ```
 
-### Etiquetas
-
-| Etiqueta | Alias | Efecto | Atributos |
+| Tag | Aliases | Effect | Attributes |
 |---|---|---|---|
-| `[voz:nombre]` | `[voice:nombre]` | Cambia de hablante hasta la siguiente etiqueta de voz | `lang=es\|en\|...`, `speed=1.1`, `engine=f5\|xtts` |
-| `[pausa:1.5]` | `[pause:1.5]` | Silencio de N segundos | — |
-| `[musica:ruta.mp3]` | `[music:...]`, `[música:...]` | Inserta un clip musical (avanza el tiempo) | `vol=0-1` (1.0), `fade=seg` (0) |
-| `[musica:ruta.mp3 fondo]` | `bg`, `background`, `bg=true` | Música de fondo bajo las voces siguientes, en bucle, con *ducking* | `vol=0-1` (0.15, volumen bajo la voz), `fade=seg` (1.5) |
-| `[musica:stop]` | `fin`, `parar` | Detiene la música de fondo con fundido | `fade=seg` (1.5) |
-| `[sfx:ruta.wav]` | — | Efecto puntual superpuesto desde ese punto (no avanza el tiempo) | `vol=0-1` (1.0) |
-| `[titulo:...]` | `[title:...]`, `[título:...]` | Metadato (no se sintetiza) | — |
+| `[voz:name]` | `[voice:name]` | Switches speaker until the next voice tag | `lang=es\|en\|...`, `speed=1.1`, `engine=f5\|xtts\|elevenlabs\|...` |
+| `[pausa:1.5]` | `[pause:1.5]` | Silence of N seconds | |
+| `[musica:file.mp3]` | `[music:...]`, `[música:...]` | Plays a music clip (time advances) | `vol=0-1` (1.0), `fade=s` (0) |
+| `[musica:file.mp3 fondo]` | `bg`, `background` | Background music under the following voices, looped, with ducking | `vol=0-1` (0.15), `fade=s` (1.5) |
+| `[musica:stop]` | `fin`, `parar` | Stops the background music with a fade | `fade=s` (1.5) |
+| `[sfx:file.wav]` | | Sound effect overlaid at that point (time does not advance) | `vol=0-1` (1.0) |
+| `[titulo:...]` | `[title:...]`, `[título:...]` | Metadata, not spoken | |
 
-Reglas:
+- Lines starting with `#` or `<!--` are comments and are never spoken.
+- A blank line separates paragraphs and adds a short pause.
+- Music and effect paths are relative to the script; quote paths with spaces:
+  `[musica:"my audio/intro.mp3"]`.
+- Errors point to the line number. Priority: language = tag > front matter > voice; engine =
+  `--engine` > tag > front matter > voice.
 
-- Las líneas que empiezan por `#` (encabezados) o `<!--` son comentarios: no
-  suenan, aunque contengan etiquetas (útil para "comentar" música).
-- Una línea vacía separa párrafos e inserta una pausa corta (0.4 s por defecto).
-- El texto se trocea en frases (`. ! ? …` y saltos de línea) y se agrupa en
-  trozos de máximo ~250 caracteres sin cortar frases (`--max-chars`).
-- Las rutas de música/sfx son relativas al guion (o absolutas). Las rutas con
-  espacios van entre comillas: `[musica:"mis audios/intro.mp3"]`.
-- Una etiqueta desconocida o un valor inválido da un error con el número de línea.
-- Prioridad: idioma = etiqueta > front matter > `voice.json`; motor =
-  `--engine` > etiqueta > front matter > `voice.json`; velocidad = etiqueta > `voice.json`.
-
-Ejemplo:
+Example:
 
 ```markdown
-[voz:ana] Hola y bienvenidos. [pausa:1]
-[musica:assets/fondo.mp3 fondo vol=0.12]
-[voz:carlos lang=en speed=0.95] Hi everyone!
+---
+title: Local Voices
+lang: en
+---
+[musica:assets/background.mp3 fondo vol=0.12]
+[voz:emma] Hello and welcome to Local Voices. I'm Emma.
+[voz:david speed=0.95] And I'm David. [pausa:0.8] Today: podcasts from plain text.
+[voz:ana lang=es] ¡Y también en castellano!
 [musica:stop fade=3]
 ```
 
-Ver [`examples/ejemplo.md`](examples/ejemplo.md).
+Ready-to-run examples: [examples/ejemplo.md](examples/ejemplo.md) (Spanish, with English lines),
+[examples/english_episode.md](examples/english_episode.md) (English) and
+[guiones/ejemplo_dialogo.md](guiones/ejemplo_dialogo.md) (bilingual dialogue). The full reference,
+with more examples, is in [skill/podcast-tts/references/formato-guion.md](skill/podcast-tts/references/formato-guion.md)
+(Spanish).
 
-## Voces
+---
 
-Cada voz vive en `voices/<nombre>/`:
+## Voices
 
-- `ref.wav`: clip de referencia de 5-15 s (se convierte a mono 24 kHz 16 bit).
-- `ref.txt`: transcripción exacta del clip (imprescindible para F5-TTS).
-- `voice.json`: `{name, lang, engine, description, xtts_speaker, speed}`.
+Each voice lives in `voices/<name>/`: `ref.wav` (reference clip), `ref.txt` (its exact transcript)
+and `voice.json` (language, engine, speed, description). Included sample voices:
 
-Voces de ejemplo incluidas (generadas con `scripts/make_sample_voices.py` a partir de
-speakers integrados de XTTS):
-
-| Voz | Idioma | Motor | Origen |
+| Voice | Language | Engine | Description |
 |---|---|---|---|
-| `ana` | es | f5 | clip de "Alma María" |
-| `carlos` | es | f5 | clip de "Luis Moray" |
-| `emma` | en | f5 | clip de "Claribel Dervla" |
-| `david` | en | xtts | speaker integrado "Damien Black" (su `ref.wav` también vale para F5) |
+| `ana` | Spanish | `f5` | Female |
+| `carlos` | Spanish | `f5` | Male |
+| `emma` | English | `f5` | Female |
+| `david` | English | `xtts` | Male (built-in XTTS speaker) |
 
-### Añadir tu propia voz
+> The sample voices were generated with built-in XTTS v2 speakers and are **non-commercial**.
 
-```powershell
-python -m podcast_tts voices add maria C:\grabaciones\maria.m4a `
-    --text "Transcripción exacta, palabra por palabra, de lo que se oye en el clip." `
-    --lang es --engine f5
-```
+### Add your own voice
 
-Requisitos del clip:
-
-- **5-15 s** (ideal 8-10 s; F5-TTS recorta a ~12 s y XTTS usa hasta ~15 s).
-- **Limpio**: una sola persona, sin música, sin eco ni ruido de fondo, sin cortes a mitad de palabra.
-- **Con transcripción exacta** (`--text`): F5-TTS la necesita para alinear. Si falta,
-  se transcribe automáticamente con Whisper (descarga ~1.6 GB y es menos fiable).
-- Cualquier formato que lea ffmpeg (wav, mp3, m4a...); se convierte solo.
-- Graba en el idioma en que vaya a hablar la voz: F5 admite `es` y `en`; para otros
-  idiomas usa `--engine xtts`.
-
-### Speakers integrados de XTTS
-
-XTTS v2 trae 58 voces listas para usar, sin clip (ver `podcast_tts.voices.XTTS_BUILTIN_SPEAKERS`
-o `list_xtts_speakers()`). Algunas: "Claribel Dervla", "Ana Florence", "Alma María",
-"Damien Black", "Luis Moray", "Marcos Rudaski". Hablan cualquiera de los 17 idiomas de XTTS:
+In the app: **Voces → Añadir voz**, upload or record a clip and type its transcript. From the
+command line:
 
 ```powershell
-python -m podcast_tts voices add narrador --engine xtts --xtts-speaker "Marcos Rudaski" --lang es
+podcast-tts voices add maria C:\recordings\maria.m4a --text "Exact, word-for-word transcript of the clip." --lang es --engine f5
 ```
 
-## Uso (CLI)
+Clip requirements:
+
+- **5-15 seconds** (8-10 s is ideal; F5-TTS uses up to ~12 s, XTTS up to ~15 s).
+- **Clean**: one person, no music, no echo or background noise, not cut mid-word.
+- **Exact transcript** (`--text` or `--text-file`): F5-TTS needs it. Without it, the clip is
+  transcribed with Whisper (an extra ~1.6 GB download, and less reliable).
+- Any format ffmpeg can read (wav, mp3, m4a...); it is converted automatically.
+- Recorded in the language the voice will speak. F5 supports Spanish and English; for other
+  languages use `--engine xtts`.
+- **Only your own voice, or a voice whose owner has given you permission.**
+
+XTTS v2 also brings 58 ready-made speakers, no clip needed:
+`podcast-tts voices add narrator --engine xtts --xtts-speaker "Marcos Rudaski" --lang es`.
+
+Cloud voices point to a voice of the provider instead of a clip:
+`podcast-tts voices add nova --engine openai --provider-voice-id nova --lang es`
+(see [docs/COMMERCIAL_USE.md](docs/COMMERCIAL_USE.md)).
+
+---
+
+## Engines and commercial use
+
+| Engine | Where it runs | Voices | Languages | Commercial use |
+|---|---|---|---|---|
+| `f5` (default) | Your PC (GPU or CPU) | Cloned from a clip | English, Spanish | **No** (CC-BY-NC-4.0 weights) |
+| `xtts` | Your PC (GPU or CPU) | Cloned from a clip or 58 built-in | 17 | **No** (CPML) |
+| `elevenlabs` | Cloud, your API key | Voice library or your own | Many | **Paid plans only** |
+| `azure` | Cloud, your API key | Azure neural voices | Many | **Yes** (paid Azure subscription) |
+| `openai` | Cloud, your API key | Built-in OpenAI voices | Many | **Yes** (disclose AI voices to listeners) |
+| `dummy` | Your PC | Test tones | | Not speech |
+| plugins | Depends | Depends | Depends | As declared by the plugin |
+
+Choose the engine per voice (`voice.json`), per line (`[voz:ana engine=openai]`), per script
+(front matter `engine:`) or for the whole run (`--engine`). `podcast-tts engines` shows the
+license, commercial-use status and configuration of each one. To set up the cloud engines and for
+a checklist before publishing, read [docs/COMMERCIAL_USE.md](docs/COMMERCIAL_USE.md). To write your
+own engine, read [docs/ENGINES_PLUGINS.md](docs/ENGINES_PLUGINS.md).
+
+---
+
+## Models
+
+Models are **not** included in the repository or the release. They are downloaded from Hugging
+Face the first time an engine needs them, or in advance:
 
 ```powershell
-# Generar un episodio
-python -m podcast_tts generate examples/ejemplo.md -o output/episodio.mp3
-
-# Probar tiempos y mezcla sin modelos (tonos en vez de voces)
-python -m podcast_tts generate examples/ejemplo.md -o output/prueba.mp3 --engine dummy
-
-# Ver cómo se interpreta un guion (JSON)
-python -m podcast_tts parse examples/ejemplo.md
-
-# Gestionar voces
-python -m podcast_tts voices list
-python -m podcast_tts voices add ana grabacion.wav --text "Transcripción exacta del clip." --lang es --engine f5
-python -m podcast_tts voices add narrador --engine xtts --xtts-speaker "Claribel Dervla" --lang en
-python -m podcast_tts voices remove ana
+podcast-tts models download all     # f5-base, f5-spanish, vocos and xtts (~4.5 GB)
+podcast-tts models status           # downloaded?, where, and size
+podcast-tts models update           # latest revision of the models you already have
 ```
 
-Opciones útiles de `generate`: `--voices-dir`, `--max-chars`, `--bitrate 192k`,
-`--lufs -16`, `--no-normalize`, `--no-cache`, `--cache-dir`, `-q`.
+They are stored in the standard caches (`%USERPROFILE%\.cache\huggingface\hub` and
+`%LOCALAPPDATA%\tts`), so they survive reinstalls and are shared with other tools. The full list,
+with repositories, sizes and licenses, is in [MODELS_AND_LICENSES.md](MODELS_AND_LICENSES.md).
 
-## UI
+---
 
-Interfaz web local (Gradio), en castellano:
+## Claude Code integration
 
-```powershell
-python -m podcast_tts ui                      # http://127.0.0.1:7860
-python -m podcast_tts ui --port 7861 --inbrowser
-python -m podcast_tts ui --host 0.0.0.0       # accesible desde la red local
-python -m podcast_tts ui --share              # enlace público temporal de Gradio
+AudioGeneration includes an optional skill for [Claude Code](https://docs.anthropic.com/en/docs/claude-code),
+Anthropic's coding assistant. With it installed, requests like *"make a two-voice podcast about
+the history of radio"* or *"read this text aloud with Carlos's voice"* make the assistant write
+the script with your existing voices, validate it and generate the MP3 with this project.
+
+- `bats\install.bat` offers to install it when Claude Code is present.
+- Manually: `powershell -ExecutionPolicy Bypass -File scripts\install_skill.ps1` (creates a link
+  in `%USERPROFILE%\.claude\skills\podcast-tts`; `-Copy` copies it instead).
+- The skill is in [skill/podcast-tts/](skill/podcast-tts/) and is documented in
+  [docs/SKILL.md](docs/SKILL.md) (Spanish).
+
+AudioGeneration works fully without it.
+
+---
+
+## Updating
+
+- **Release (zip)**: just open `AudioGeneration.exe`. It checks the latest GitHub release and
+  offers to update.
+- **Git clone**: `AudioGeneration.exe` checks with Git, or run `bats\update.bat`, which pulls the
+  code, syncs the dependencies with the same options you installed and updates the downloaded
+  models.
+- **Switched from CPU to an NVIDIA GPU?** Run `bats\install_gpu.bat`.
+
+---
+
+## Troubleshooting
+
+<details>
+<summary><b>Synthesis is very slow / CUDA is not used</b></summary>
+
+Run `.venv\Scripts\python.exe scripts\check_env.py` (it should end with `TODO OK`) and check the
+**Sistema** tab. If you have an NVIDIA GPU but the CPU build was installed (for example, the driver
+was missing during installation), update the driver and run `bats\install_gpu.bat`.
+`PODCAST_TTS_DEVICE=cpu` or `cuda` forces the device. The first generation is always slower
+because the models are loaded.
+</details>
+
+<details>
+<summary><b>RTX 50 series (Blackwell) GPUs</b></summary>
+
+The bundled PyTorch build uses CUDA 12.6, which does not support RTX 50 GPUs (sm_120). They need the
+CUDA 12.8 build (`cu128`): change the `pytorch-cu126` index in `pyproject.toml` to
+`https://download.pytorch.org/whl/cu128`, run `uv lock --python 3.11` and reinstall. Meanwhile,
+`bats\install.bat /cpu` works, more slowly. See [docs/ENGINES.md](docs/ENGINES.md).
+</details>
+
+<details>
+<summary><b>"ffmpeg not found" or MP3 errors</b></summary>
+
+Install it with `winget install --id Gyan.FFmpeg -e` (or from <https://www.gyan.dev/ffmpeg/builds/>)
+and open a new terminal so the `PATH` is updated. WAV output works without ffmpeg.
+</details>
+
+<details>
+<summary><b>SmartScreen blocks AudioGeneration.exe</b></summary>
+
+The launcher is not code-signed. Click **More info → Run anyway**, or use `bats\run.bat` from a
+[Git installation](#install-with-git).
+</details>
+
+<details>
+<summary><b>The desktop window does not open (WebView2)</b></summary>
+
+The desktop app uses Microsoft Edge WebView2, which is preinstalled on Windows 11 and most
+Windows 10 PCs. If it is missing, install the
+[WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) or use
+`bats\run_web.bat` to open the interface in your browser.
+</details>
+
+<details>
+<summary><b>Out of GPU memory</b></summary>
+
+Close other programs using the GPU (including a second copy of the app) and try again. F5-TTS and
+XTTS v2 together need about 5 GB of VRAM.
+</details>
+
+<details>
+<summary><b>XTTS hangs on load, or <code>UnicodeEncodeError</code> in the console</b></summary>
+
+Set `COQUI_TOS_AGREED=1` and `PYTHONUTF8=1` before running the CLI. The `.bat` scripts, the
+launcher and the skill already do it.
+</details>
+
+<details>
+<summary><b>The voice sounds wrong or mispronounces words</b></summary>
+
+Use a cleaner 8-10 s clip and check that `ref.txt` matches it word for word. Make sure the voice's
+language matches the text (`lang=`). For languages other than Spanish and English use `xtts`.
+</details>
+
+<details>
+<summary><b>A cloud engine returns 401, 403 or 429</b></summary>
+
+401: wrong key (`podcast-tts config set ...`). 402/403: your plan does not allow it. 404: wrong
+voice, model or region. 429: rate limit or quota. See [docs/COMMERCIAL_USE.md](docs/COMMERCIAL_USE.md#errors).
+</details>
+
+---
+
+## Project structure
+
+```
+AudioGeneration/
+├── AudioGeneration.exe        # launcher (in the release zip; build it with bats\build_launcher.bat)
+├── assets/icon.png            # application icon
+├── bats/                      # install, run, run_web, update, install_gpu, create_shortcuts, build_launcher
+├── src/podcast_tts/
+│   ├── script_parser.py       # Markdown script -> segments
+│   ├── assembler.py           # synthesis, mixing, normalization, export, cache
+│   ├── voices.py              # voice registry (voices/)
+│   ├── models.py              # model catalog, status and download
+│   ├── config.py              # API keys (.env)
+│   ├── licensing.py           # license notices
+│   ├── cli.py                 # podcast-tts command line
+│   ├── ui.py                  # Gradio interface
+│   └── engines/               # f5, xtts, elevenlabs, azure, openai, dummy + plugin registry
+├── voices/                    # sample voices: ana, carlos, emma, david
+├── examples/, guiones/        # example scripts (guiones/ is also where the app saves yours)
+├── skill/podcast-tts/         # optional Claude Code skill
+├── scripts/                   # check_env.py, install_skill.ps1, make_sample_voices.py, smoke tests
+├── docs/                      # documentation (index: docs/README.md)
+├── tests/                     # pytest
+├── output/                    # generated audio (ignored by Git)
+└── .cache/tts/                # synthesis cache (ignored by Git)
 ```
 
-Arranca en un par de segundos sin cargar ningún modelo: F5-TTS / XTTS se cargan
-en la primera síntesis (la primera generación tarda más). Solo se sintetiza una
-cosa a la vez.
+---
 
-Pestañas:
+## Contributing
 
-- **Guion → Podcast**: editor precargado con `examples/ejemplo.md`, motor
-  (*auto (según voz)*, `f5`, `xtts` o `dummy` para probar tiempos sin modelos),
-  nombre del fichero, formato (mp3/wav), bitrate y normalización a -16 LUFS.
-  *Validar* muestra la tabla de segmentos (nº, tipo, voz, idioma, texto, línea) y
-  las voces usadas, avisando si alguna no existe. *Generar* sintetiza en segundo
-  plano con barra de progreso y log; al terminar muestra el reproductor y el
-  enlace de descarga. El resultado se guarda en `output/<nombre>.<formato>`.
-  Los errores del guion se indican con su número de línea. *Cargar guion* abre
-  un `.md`; *Guardar guion* lo guarda en `guiones/<nombre>.md`. Las rutas
-  relativas de música/sfx se buscan en `examples/`, el directorio actual y la
-  raíz del proyecto. Incluye una tabla de ayuda con las etiquetas.
-- **Voces**: tabla de voces (nombre, idioma, motor, descripción, duración del
-  clip, speaker XTTS, velocidad), reproductor del `ref.wav` de la voz
-  seleccionada, *Probar voz* (sintetiza una frase corta en su idioma o la que
-  escribas) y *Eliminar voz* (pide confirmación). En *Añadir voz* subes o grabas
-  con el micrófono un clip de 5-15 s con su transcripción exacta, o eliges un
-  speaker integrado de XTTS en lugar del clip.
-- **Sistema**: estado de CUDA y la GPU, motores disponibles, rutas (voces, caché,
-  salida, guiones) con tamaños, botón *Vaciar caché de síntesis* y la lista de
-  ficheros de `output/` para descargar.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup with
+uv, the tests, the style guide and how to add an engine. Changes are listed in
+[CHANGELOG.md](CHANGELOG.md) and all documentation is indexed in [docs/README.md](docs/README.md).
 
-## Tests
+---
 
-```powershell
-$env:PYTHONUTF8='1'; $env:COQUI_TOS_AGREED='1'
-.venv\Scripts\python.exe -m pytest           # rápido (~10 s): excluye los tests `slow`, sin cargar modelos
-.venv\Scripts\python.exe -m pytest -m slow   # motores reales F5-TTS / XTTS v2 (GPU y modelos descargados, ~40 s)
-```
+## License
 
-`pytest` a secas aplica `-m 'not slow'` (configurado en `pyproject.toml`).
+The **source code** is released under the [MIT License](LICENSE). © 2026 enriquevelmai.
+
+The MIT license does **not** apply to the model weights the program downloads, to the audio they
+produce, to the sample voices or to the cloud services. Those keep their own licenses and terms,
+and **the default local models are non-commercial**. See
+[MODELS_AND_LICENSES.md](MODELS_AND_LICENSES.md) and [docs/COMMERCIAL_USE.md](docs/COMMERCIAL_USE.md).
+You are responsible for complying with them and for having consent for any voice you clone.

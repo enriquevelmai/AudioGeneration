@@ -4,6 +4,10 @@
 > you use.** This document is a practical summary, not legal advice. Licenses and provider
 > terms change: always read the current version linked below before publishing audio.
 
+The code of this project is MIT, but **the default local models are non-commercial**. The full
+list of models and services, with their licenses and where they are cached, is in
+[MODELS_AND_LICENSES.md](../MODELS_AND_LICENSES.md).
+
 ## Which engines allow commercial use?
 
 | Engine | Type | License of the audio source | Commercial use |
@@ -22,9 +26,15 @@ Notes:
   weights** used to generate the audio are not. What matters for the audio you publish is the
   weights' license.
 - Coqui (the company) shut down and no longer sells commercial XTTS licenses.
-- **Edge-TTS is not used and must not be used.** The `azure` engine uses the official, paid
-  Azure AI Speech REST API with your own resource key; it has nothing to do with the free,
-  unofficial Edge read-aloud endpoint.
+- The **sample voices** in `voices/` (`ana`, `carlos`, `emma`, `david`) were generated with
+  built-in XTTS v2 speakers, so they are non-commercial too, even with another engine. For
+  commercial work use your own (consented) recordings or cloud voices.
+- If you need a local, offline engine for commercial work, write a plugin around a model whose
+  weights have a permissive license (see [ENGINES_PLUGINS.md](ENGINES_PLUGINS.md)) and declare
+  it accurately in `license_info`.
+- The project does not use Edge-TTS. The `azure` engine uses the official, paid Azure AI Speech
+  REST API with your own resource key; it has nothing to do with the free, unofficial Edge
+  read-aloud endpoint.
 - Check the current status at any time:
 
   ```powershell
@@ -177,6 +187,7 @@ works if every voice in the script has a `provider_voice_id` valid for that prov
 - [ ] Every sentence was generated with an engine whose license allows commercial use
       (`python -m podcast_tts engines`; no license notice when generating).
 - [ ] Your provider plan allows commercial use, and you follow its terms and usage policies.
+- [ ] No sample voice from `voices/` (they are non-commercial XTTS output) is used.
 - [ ] You have consent for every cloned or imitated voice.
 - [ ] You disclose AI-generated voices where the provider or the law requires it.
 - [ ] Background music and sound effects are also licensed for your use.
