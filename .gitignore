@@ -15,3 +15,6 @@ AudioGeneration.exe
 launcher.log
 build/
 dist/
+# Guiones del usuario (la UI guarda aquí); los ejemplos versionados están en examples/
+guiones/*
+!guiones/.gitkeep
