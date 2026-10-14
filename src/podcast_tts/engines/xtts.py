@@ -75,7 +75,7 @@ def _load_model() -> Any:
             device = select_device("XTTS v2")
             _model = TTS(MODEL_NAME, progress_bar=False).to(device)
         except ImportError as exc:
-            raise EngineError(f"coqui-tts no está instalado ({exc}). Ejecuta bats\install.bat.") from exc
+            raise EngineError(f"coqui-tts no está instalado ({exc}). Ejecuta bats/install.bat.") from exc
         except Exception as exc:
             raise EngineError(f"no se pudo cargar el modelo XTTS v2: {exc}") from exc
         log.info("XTTS v2 cargado en %.1f s", time.perf_counter() - t0)

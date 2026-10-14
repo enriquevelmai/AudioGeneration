@@ -80,7 +80,7 @@ def _load_model(key: str) -> Any:
             with contextlib.redirect_stdout(io.StringIO()):  # f5_tts imprime rutas/vocab al cargar
                 model = F5TTS(model=model_name, ckpt_file=ckpt, vocab_file=vocab, device=_device())
         except ImportError as exc:
-            raise EngineError(f"F5-TTS no está instalado ({exc}). Ejecuta bats\install.bat.") from exc
+            raise EngineError(f"F5-TTS no está instalado ({exc}). Ejecuta bats/install.bat.") from exc
         except Exception as exc:  # descarga, CUDA, ficheros corruptos...
             raise EngineError(
                 f"no se pudo cargar el modelo F5-TTS '{model_name}' para '{key}': {exc}"
