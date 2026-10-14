@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -126,6 +127,6 @@ def test_startup_failure_detection(launcher, tmp_path: Path, monkeypatch) -> Non
 def test_clean_env_sets_pythonpath_to_src(launcher, monkeypatch) -> None:
     monkeypatch.delenv("PYTHONPATH", raising=False)
     env = launcher.clean_env()
-    assert env["PYTHONPATH"].split(";")[0] == str(Path(launcher.ROOT) / "src")
-    monkeypatch.setenv("PYTHONPATH", "C:\\otra")
-    assert launcher.clean_env()["PYTHONPATH"].endswith(";C:\\otra")
+    assert env["PYTHONPATH"].split(os.pathsep)[0] == str(Path(launcher.ROOT) / "src")
+    monkeypatch.setenv("PYTHONPATH", "otra")
+    assert launcher.clean_env()["PYTHONPATH"].endswith(os.pathsep + "otra")

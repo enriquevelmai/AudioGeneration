@@ -20,7 +20,7 @@ import json
 import math
 import shutil
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Callable, Sequence
 
 import numpy as np
@@ -401,7 +401,9 @@ def _resolve_path(raw: str, options: AssembleOptions, line: int | None) -> Path:
     where = f"línea {line}: " if line else ""
     path = Path(raw)
     if not options.allow_external_paths:
-        if path.is_absolute() or path.drive or path.root or ".." in path.parts:
+        win = PureWindowsPath(raw)
+        if (path.is_absolute() or path.drive or path.root or ".." in path.parts
+                or win.drive or win.root or ".." in win.parts):
             raise AssembleError(
                 f"{where}ruta de audio no permitida '{raw}': en modo remoto solo se admiten "
                 "rutas relativas a la carpeta del guion o del proyecto, sin '..'"

@@ -405,20 +405,30 @@ def ask(question: str) -> bool:
     return answer not in ("n", "no")
 
 
+# Los .bat usan opciones al estilo de Windows (/y, /print...). Solo se traducen estas palabras
+# exactas: un prefijo "/" general confundiría las rutas POSIX (/tmp/x.json) con opciones.
+SLASH_FLAGS = {"/y": "--yes", "/claude-code": "--claude-code", "/claude-desktop": "--claude-desktop",
+               "/print": "--print", "/uninstall": "--uninstall"}
+
+
+def normalize_argv(argv: Sequence[str]) -> list[str]:
+    return [SLASH_FLAGS.get(a.lower(), a) for a in argv]
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="install_integrations", prefix_chars="-/",
+        prog="install_integrations",
         description="Registra el servidor MCP de podcast-tts en Claude Code, Claude Desktop y "
                     "otros clientes MCP (idempotente).")
-    p.add_argument("/y", "-y", "--yes", dest="yes", action="store_true",
+    p.add_argument("-y", "--yes", dest="yes", action="store_true",
                    help="sin preguntas: configura todo lo detectado")
-    p.add_argument("/claude-code", "--claude-code", dest="claude_code", action="store_true",
+    p.add_argument("--claude-code", dest="claude_code", action="store_true",
                    help="solo Claude Code (skill + claude mcp add)")
-    p.add_argument("/claude-desktop", "--claude-desktop", dest="claude_desktop",
+    p.add_argument("--claude-desktop", dest="claude_desktop",
                    action="store_true", help="solo Claude Desktop (claude_desktop_config.json)")
-    p.add_argument("/print", "--print", dest="print_only", action="store_true",
+    p.add_argument("--print", dest="print_only", action="store_true",
                    help="solo imprime el JSON para pegar en otros clientes")
-    p.add_argument("/uninstall", "--uninstall", dest="uninstall", action="store_true",
+    p.add_argument("--uninstall", dest="uninstall", action="store_true",
                    help="quita el registro de podcast-tts (no borra la skill)")
     p.add_argument("--config-path", action="append", default=None, metavar="FICHERO",
                    help="claude_desktop_config.json a usar (para pruebas; repetible)")
@@ -437,7 +447,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
         except (AttributeError, ValueError):
             pass
-    args = build_parser().parse_args(argv)
+    args = build_parser().parse_args(normalize_argv(sys.argv[1:] if argv is None else argv))
     python = Path(args.python) if args.python else venv_python()
     entry = server_entry(python)
     say("=" * 68)
