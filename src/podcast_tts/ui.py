@@ -5,7 +5,8 @@ Lanzar con::
     python -m podcast_tts ui [--port 7860] [--host 127.0.0.1] [--share]
 
 La app arranca sin cargar ningún modelo: F5-TTS / XTTS se cargan de forma
-perezosa en la primera síntesis (``engines.get_engine``).
+perezosa en la primera síntesis (``engines.get_engine``). La lista de motores es
+dinámica (integrados, en la nube y plugins; ver ``engines.engine_names``).
 
 La lógica está en funciones Python normales (``validate_script``,
 ``run_generation``, ``generate_events``, ``voices_table``...) que reciben un
@@ -36,7 +37,9 @@ from .assembler import (
     export_audio,
     synthesize_speech,
 )
-from .engines import ENGINE_NAMES, EngineError
+from . import config as config_mod
+from .engines import EngineError, engine_info, engine_kind, engine_names
+from .licensing import engines_in_script, license_notice
 from .script_parser import (
     DEFAULT_MAX_CHARS,
     Music,
@@ -62,13 +65,19 @@ __all__ = [
     "UIConfig",
     "build_app",
     "clear_cache",
+    "delete_api_key",
     "delete_voice",
+    "engine_choices",
+    "engines_table",
     "format_error",
     "generate_events",
+    "generation_license_notice",
     "main",
     "output_files",
     "run_generation",
+    "save_api_key",
     "save_script",
+    "settings_status",
     "system_status",
     "test_voice",
     "validate_script",
@@ -76,7 +85,23 @@ __all__ = [
 ]
 
 ENGINE_AUTO = "auto (según voz)"
-ENGINE_CHOICES = [ENGINE_AUTO, *ENGINE_NAMES]
+
+
+def engine_choices() -> list[str]:
+    """Opciones del selector de motor: "auto" + motores registrados (dinámico)."""
+    return [ENGINE_AUTO, *engine_names()]
+
+
+def _is_cloud(engine: str | None) -> bool:
+    if not engine or engine == ENGINE_AUTO:
+        return False
+    try:
+        return engine_kind(engine) == "cloud"
+    except EngineError:
+        return False
+
+
+ENGINE_CHOICES = engine_choices()  # valor al importar (compatibilidad); la app usa engine_choices()
 LANG_CHOICES = ["es", "en", "fr", "de", "it", "pt", "pl", "nl", "ca", "ja", "zh"]
 BITRATES = ["96k", "128k", "160k", "192k", "256k", "320k"]
 TEST_PHRASES = {
@@ -98,7 +123,7 @@ HELP_MD = """
 
 | Etiqueta | Alias | Efecto | Atributos |
 |---|---|---|---|
-| `[voz:nombre]` | `[voice:nombre]` | Cambia de hablante hasta la siguiente etiqueta de voz | `lang=es\\|en\\|...`, `speed=1.1`, `engine=f5\\|xtts` |
+| `[voz:nombre]` | `[voice:nombre]` | Cambia de hablante hasta la siguiente etiqueta de voz | `lang=es\\|en\\|...`, `speed=1.1`, `engine=f5\\|xtts\\|openai\\|...` |
 | `[pausa:1.5]` | `[pause:1.5]` | Silencio de N segundos | — |
 | `[musica:ruta.mp3]` | `[music:...]`, `[música:...]` | Inserta un clip musical (avanza el tiempo) | `vol=0-1` (1.0), `fade=seg` (0) |
 | `[musica:ruta.mp3 fondo]` | `bg`, `background` | Música de fondo en bucle bajo las voces, con *ducking* | `vol=0-1` (0.15), `fade=seg` (1.5) |
@@ -240,8 +265,11 @@ def validate_script(text: str, engine_choice: str | None, cfg: UIConfig
                 lines.append(f"- ⚠️ `{name}`: **NO EXISTE** en {cfg.voices_dir}")
             continue
         engine = override or script.meta.default_engine or voice.engine
-        src = "ref.wav" if voice.has_ref else (
-            f"speaker XTTS '{voice.xtts_speaker}'" if voice.xtts_speaker else "⚠️ sin ref.wav")
+        if voice.provider_voice_id:
+            src = f"voz del proveedor '{voice.provider_voice_id}'"
+        else:
+            src = "ref.wav" if voice.has_ref else (
+                f"speaker XTTS '{voice.xtts_speaker}'" if voice.xtts_speaker else "⚠️ sin ref.wav")
         lines.append(f"- `{name}`: idioma {voice.lang}, motor {engine}, {src}")
     if not script.voices:
         lines.append("- (ninguna)")
@@ -251,7 +279,25 @@ def validate_script(text: str, engine_choice: str | None, cfg: UIConfig
             f"⚠️ Faltan {len(missing)} voz/voces: créalas en la pestaña **Voces** "
             "o elige el motor *dummy* para probar tiempos."
         )
+    notice = license_notice(engines_in_script(script, cfg.voices_dir, override), markdown=True)
+    if notice:
+        lines += ["", f"ℹ️ {notice}"]
     return _segments_frame(script, cfg), "\n".join(lines)
+
+
+def generation_license_notice(text: str, engine_choice: str | None, cfg: UIConfig) -> str:
+    """Aviso discreto (Markdown) si el motor elegido, o el que usarán las voces del guion en
+    modo auto, es de uso no comercial. Cadena vacía si no hay nada que avisar."""
+    override = _engine_override(engine_choice)
+    names: list[str] = [override] if override else []
+    if not override and (text or "").strip():
+        try:
+            names = engines_in_script(parse_script(text, max_chars=cfg.max_chars),
+                                      cfg.voices_dir)
+        except Exception:  # noqa: BLE001 - guion a medio escribir
+            names = []
+    notice = license_notice(names, markdown=True)
+    return f"<small>ℹ️ {notice} Más detalles en la pestaña **Ajustes**.</small>" if notice else ""
 
 
 def run_generation(
@@ -385,7 +431,7 @@ def save_script(text: str, name: str, cfg: UIConfig) -> tuple[str | None, str]:
 # --------------------------------------------------------------------------- #
 
 VOICE_HEADERS = ["Nombre", "Idioma", "Motor", "Descripción", "Duración ref (s)", "Speaker XTTS",
-                 "Speed"]
+                 "ID proveedor", "Speed"]
 
 
 def _wav_seconds(path: Path) -> float | None:
@@ -401,7 +447,8 @@ def voices_table(cfg: UIConfig) -> pd.DataFrame:
     for v in list_voices(cfg.voices_dir):
         dur = _wav_seconds(v.ref_wav) if v.has_ref else None
         rows.append([v.name, v.lang, v.engine, v.description,
-                     "" if dur is None else dur, v.xtts_speaker or "", v.speed])
+                     "" if dur is None else dur, v.xtts_speaker or "", v.provider_voice_id or "",
+                     v.speed])
     return pd.DataFrame(rows, columns=VOICE_HEADERS)
 
 
@@ -422,9 +469,14 @@ def voice_details(name: str | None, cfg: UIConfig) -> tuple[str | None, str]:
         parts.append(v.description)
     if v.xtts_speaker:
         parts.append(f"Speaker integrado de XTTS: `{v.xtts_speaker}`")
+    if v.provider_voice_id:
+        parts.append(f"Voz del proveedor: `{v.provider_voice_id}`")
+    if v.provider_options:
+        opts = ", ".join(f"{k}={val}" for k, val in v.provider_options.items())
+        parts.append(f"Opciones del proveedor: `{opts}`")
     if v.ref_text:
         parts.append(f"Transcripción: *{v.ref_text}*")
-    elif v.has_ref:
+    elif v.has_ref and v.engine == "f5":
         parts.append("⚠️ Sin transcripción (ref.txt): F5-TTS la necesita.")
     return (str(v.ref_wav) if v.has_ref else None), "\n\n".join(parts)
 
@@ -451,15 +503,25 @@ def test_voice(name: str | None, engine_choice: str | None, phrase: str | None, 
 
 def create_voice(name: str, audio_path: str | None, transcript: str, lang: str, engine: str,
                  description: str, speed: float, xtts_speaker: str | None, overwrite: bool,
-                 cfg: UIConfig) -> str:
-    """Crea una voz; devuelve un mensaje para el usuario."""
+                 cfg: UIConfig, provider_voice_id: str | None = None) -> str:
+    """Crea una voz; devuelve un mensaje para el usuario.
+
+    Para motores en la nube (elevenlabs, azure, openai...) basta con ``provider_voice_id``.
+    """
     name = (name or "").strip()
     if not name:
         return "⚠️ Escribe un nombre para la voz."
     speaker = (xtts_speaker or "").strip() or None
-    if not audio_path and not speaker:
+    provider_id = (provider_voice_id or "").strip() or None
+    cloud = _is_cloud(engine)
+    if cloud:
+        if not provider_id:
+            return (f"⚠️ El motor `{engine}` es en la nube: escribe el ID de la voz del "
+                    "proveedor (p.ej. `nova` en OpenAI, `es-ES-AlvaroNeural` en Azure).")
+        speaker = None
+    elif not audio_path and not speaker:
         return "⚠️ Sube o graba un audio de referencia, o elige un speaker integrado de XTTS."
-    if speaker and not audio_path and engine != "xtts":
+    if not cloud and speaker and not audio_path and engine != "xtts":
         engine = "xtts"
     try:
         with warnings.catch_warnings(record=True) as caught:
@@ -467,7 +529,8 @@ def create_voice(name: str, audio_path: str | None, transcript: str, lang: str, 
             voice = add_voice(name, audio_path or None, transcript or "", lang=lang or "es",
                               engine=engine or "f5", description=description or "",
                               xtts_speaker=speaker, speed=float(speed or 1.0),
-                              voices_dir=cfg.voices_dir, overwrite=bool(overwrite))
+                              voices_dir=cfg.voices_dir, overwrite=bool(overwrite),
+                              provider_voice_id=provider_id if cloud else None)
     except Exception as exc:  # noqa: BLE001
         return f"❌ {format_error(exc)}"
     msg = [f"✅ Voz '{voice.name}' guardada en `{voice.path}`"]
@@ -536,34 +599,28 @@ def _gpu_status() -> str:
     return "\n".join(f"- {line}" for line in lines)
 
 
-def _engines_status() -> str:
-    from . import engines as engines_mod
+def _engine_state(d: dict[str, Any]) -> str:
+    if not d.get("importable"):
+        return "no disponible"
+    if not d.get("configured"):
+        return "sin clave"
+    return "listo"
 
-    fn = getattr(engines_mod, "engine_info", None)
-    if fn is None:
-        return "\n".join(f"- `{n}`" for n in ENGINE_NAMES) + "\n\n(sin `engine_info()`: solo nombres)"
+
+def _engines_status() -> str:
     try:
-        info = fn()
+        info = engine_info()
     except Exception as exc:  # noqa: BLE001
         return f"No se pudo obtener la información de los motores: {exc}"
     lines = []
-    if isinstance(info, dict):
-        for name, data in info.items():
-            if isinstance(data, dict):
-                detail = ", ".join(f"{k}: {v}" for k, v in data.items())
-            else:
-                detail = str(data)
-            lines.append(f"- `{name}`: {detail}")
-    elif isinstance(info, (list, tuple)):
-        for item in info:
-            if isinstance(item, dict):
-                name = item.get("name", "?")
-                detail = ", ".join(f"{k}: {v}" for k, v in item.items() if k != "name")
-                lines.append(f"- `{name}`: {detail}")
-            else:
-                lines.append(f"- {item}")
-    else:
-        lines.append(str(info))
+    for name, d in info.items():
+        parts = [d.get("kind", "local"), _engine_state(d)]
+        if d.get("kind") == "local" and name != "dummy":
+            parts.append(f"GPU: {d.get('device')}" if d.get("cuda") else "CPU")
+            parts.append("modelo cargado" if d.get("loaded") else "modelo sin cargar")
+        if d.get("error") and not d.get("importable"):
+            parts.append(str(d["error"]))
+        lines.append(f"- `{name}`: {', '.join(parts)}")
     return "\n".join(lines) or "(sin información)"
 
 
@@ -609,6 +666,87 @@ def output_files(cfg: UIConfig) -> list[str]:
     return [str(p) for p in files]
 
 
+# --------------------------------------------------------------------------- #
+# Pestaña 4: ajustes (claves de API y licencias)
+# --------------------------------------------------------------------------- #
+
+ENGINE_HEADERS = ["Motor", "Tipo", "Licencia", "Uso comercial", "Configurado", "Disponible",
+                  "Notas"]
+
+
+def _yes_no(value: Any) -> str:
+    return "sí" if value is True else ("no" if value is False else str(value))
+
+
+def engines_table() -> pd.DataFrame:
+    """Tabla de motores con su licencia y si permiten uso comercial (sin importar torch)."""
+    rows = []
+    for name, d in engine_info(check_cuda=False).items():
+        configured = _yes_no(d.get("configured"))
+        if d.get("missing_config"):
+            configured = "falta " + ", ".join(d["missing_config"])
+        rows.append([name, "nube" if d.get("kind") == "cloud" else "local", d.get("license", ""),
+                     _yes_no(d.get("commercial_use")), configured,
+                     _yes_no(bool(d.get("importable"))), d.get("license_notes", "")])
+    return pd.DataFrame(rows, columns=ENGINE_HEADERS)
+
+
+def api_key_names() -> list[str]:
+    """Variables que se pueden configurar: las conocidas y las que piden los motores."""
+    names = list(config_mod.KNOWN_KEYS)
+    for d in engine_info(check_cuda=False).values():
+        names += [k for k in d.get("required_config", []) if k not in names]
+    return names
+
+
+def settings_status() -> str:
+    """Estado de las claves en Markdown (siempre enmascaradas)."""
+    lines = [f"Fichero: `{config_mod.env_file_path()}` (ignorado por git)", ""]
+    for st in config_mod.key_status(api_key_names()):
+        if st.is_set:
+            where = "variable de entorno" if st.source == "entorno" else ".env"
+            lines.append(f"- `{st.name}`: ✅ `{st.masked}` ({where})")
+        else:
+            lines.append(f"- `{st.name}`: sin definir")
+    lines += ["", "Las variables de entorno tienen prioridad sobre `.env`."]
+    return "\n".join(lines)
+
+
+def save_api_key(name: str | None, value: str | None) -> str:
+    """Guarda una clave en ``.env``. Nunca devuelve el valor completo."""
+    if not name:
+        return "⚠️ Elige una variable."
+    if not (value or "").strip():
+        return "⚠️ Escribe el valor de la clave."
+    try:
+        config_mod.set_key(name, value or "")
+    except config_mod.ConfigError as exc:
+        return f"❌ {exc}"
+    shown = config_mod.mask(value) if config_mod.is_secret(name) else (value or "").strip()
+    msg = f"✅ `{name}` guardada en `.env` (`{shown}`)."
+    import os
+
+    if os.environ.get(name):
+        msg += " ⚠️ También está definida como variable de entorno, que tiene prioridad."
+    return msg
+
+
+def delete_api_key(name: str | None) -> str:
+    """Borra una clave de ``.env``."""
+    if not name:
+        return "⚠️ Elige una variable."
+    try:
+        found = config_mod.delete_key(name)
+    except config_mod.ConfigError as exc:
+        return f"❌ {exc}"
+    msg = f"🗑️ `{name}` borrada de `.env`." if found else f"`{name}` no estaba en `.env`."
+    import os
+
+    if os.environ.get(name):
+        msg += " ⚠️ Sigue definida como variable de entorno."
+    return msg
+
+
 def _outputs_summary(cfg: UIConfig) -> tuple[str, list[str] | None]:
     files = output_files(cfg)
     return f"**{len(files)}** ficheros en `{cfg.output_dir}`", (files or None)
@@ -637,8 +775,9 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
         initial_script = "[voz:ana] Hola y bienvenidos.\n"
 
     with gr.Blocks(title="Podcast TTS", analytics_enabled=False) as app:
-        gr.Markdown("# 🎙️ Podcast TTS\nGenera podcasts en local a partir de un guion Markdown "
-                    "con voces clonadas (F5-TTS / XTTS v2).")
+        gr.Markdown("# 🎙️ Podcast TTS\nGenera podcasts a partir de un guion Markdown "
+                    "con voces clonadas en local (F5-TTS / XTTS v2) o con proveedores en la "
+                    "nube (ElevenLabs, Azure, OpenAI).")
 
         # ----------------------------------------------------------- Guion
         with gr.Tab("Guion → Podcast"):
@@ -656,7 +795,9 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                     save_msg = gr.Markdown()
                     saved_file = gr.File(label="Guion guardado", visible=False)
                 with gr.Column(scale=2):
-                    engine = gr.Dropdown(ENGINE_CHOICES, value=ENGINE_AUTO, label="Motor")
+                    engine = gr.Dropdown(engine_choices(), value=ENGINE_AUTO, label="Motor")
+                    engine_notice = gr.Markdown(
+                        lambda: generation_license_notice(initial_script, ENGINE_AUTO, cfg))
                     out_name = gr.Textbox(value="episodio", label="Nombre del fichero de salida",
                                           max_lines=1)
                     with gr.Row():
@@ -678,6 +819,10 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
 
             validate_btn.click(lambda t, e: validate_script(t, e, cfg), [editor, engine],
                                [segments, report], api_name="validar")
+            _notice = lambda t, e: generation_license_notice(t, e, cfg)  # noqa: E731
+            engine.change(_notice, [editor, engine], engine_notice)
+            editor.blur(_notice, [editor, engine], engine_notice)
+            validate_btn.click(_notice, [editor, engine], engine_notice)
 
             def _generate(t, e, n, f, b, norm, progress=gr.Progress()):
                 yield from generate_events(t, e, n, f, b, norm, cfg, progress)
@@ -706,7 +851,7 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                     ref_player = gr.Audio(label="Clip de referencia (ref.wav)", type="filepath",
                                           interactive=False)
                 with gr.Column():
-                    test_engine = gr.Dropdown(ENGINE_CHOICES, value=ENGINE_AUTO,
+                    test_engine = gr.Dropdown(engine_choices(), value=ENGINE_AUTO,
                                               label="Motor para la prueba")
                     test_phrase = gr.Textbox(label="Frase de prueba (vacío = frase en su idioma)",
                                              max_lines=2)
@@ -732,7 +877,11 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                         with gr.Row():
                             new_lang = gr.Dropdown(LANG_CHOICES, value="es", label="Idioma",
                                                    allow_custom_value=True)
-                            new_engine = gr.Dropdown(list(ENGINE_NAMES), value="f5", label="Motor")
+                            new_engine = gr.Dropdown(list(engine_names()), value="f5",
+                                                     label="Motor")
+                        new_provider_id = gr.Textbox(
+                            label="ID de voz del proveedor (p.ej. `nova`, `es-ES-AlvaroNeural` "
+                                  "o el ID de ElevenLabs)", max_lines=1, visible=False)
                         new_desc = gr.Textbox(label="Descripción", max_lines=1)
                         new_speed = gr.Slider(0.5, 1.5, value=1.0, step=0.05, label="Velocidad")
                         new_speaker = gr.Dropdown(
@@ -777,15 +926,23 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
 
             confirm_yes.click(_do_delete, voice_sel, [confirm_row, delete_msg, voices_df, voice_sel])
 
-            def _add(name, audio, text, lang, eng, desc, speed, speaker, overwrite):
+            def _add(name, audio, text, lang, eng, desc, speed, speaker, overwrite, provider_id):
                 msg = create_voice(name, audio, text, lang, eng, desc, speed, speaker, overwrite,
-                                   cfg)
+                                   cfg, provider_voice_id=provider_id)
                 df, dd = _refresh(name.strip() if name else None)
                 return msg, df, dd
 
             add_btn.click(_add, [new_name, new_audio, new_text, new_lang, new_engine, new_desc,
-                                 new_speed, new_speaker, new_overwrite],
+                                 new_speed, new_speaker, new_overwrite, new_provider_id],
                           [add_msg, voices_df, voice_sel])
+
+            def _engine_form(eng):
+                cloud = _is_cloud(eng)
+                return (gr.update(visible=cloud), gr.update(visible=not cloud),
+                        gr.update(visible=not cloud), gr.update(visible=not cloud))
+
+            new_engine.change(_engine_form, new_engine,
+                              [new_provider_id, new_audio, new_text, new_speaker])
 
         # ----------------------------------------------------------- Sistema
         with gr.Tab("Sistema") as system_tab:
@@ -810,6 +967,45 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                 return (msg, *_sys())
 
             clear_btn.click(_clear, None, [sys_msg, status, out_count, out_files])
+
+        # ----------------------------------------------------------- Ajustes
+        with gr.Tab("Ajustes") as settings_tab:
+            gr.Markdown(
+                "### Claves de API de los motores en la nube\n"
+                "Se guardan en el fichero `.env` del proyecto (ignorado por git) y solo se "
+                "muestran enmascaradas. Los motores locales no necesitan claves.")
+            keys_md = gr.Markdown(settings_status)
+            with gr.Row():
+                key_name = gr.Dropdown(api_key_names(), value=None, label="Variable",
+                                       allow_custom_value=True)
+                key_value = gr.Textbox(label="Valor", type="password", max_lines=1,
+                                       placeholder="pega aquí la clave")
+            with gr.Row():
+                key_save = gr.Button("💾 Guardar clave", variant="primary")
+                key_delete = gr.Button("🗑️ Borrar clave", variant="stop")
+            key_msg = gr.Markdown()
+            gr.Markdown(
+                "### Motores y licencias\n"
+                "Los pesos de **f5** (CC-BY-NC-4.0) y **xtts** (CPML) son de uso **no comercial**. "
+                "Para uso comercial usa un proveedor con plan de pago y revisa sus términos. "
+                "Clonar la voz de otra persona requiere su consentimiento. "
+                "Ver `docs/COMMERCIAL_USE.md`.")
+            engines_df = gr.Dataframe(value=engines_table, headers=ENGINE_HEADERS,
+                                      label="Motores", interactive=False, wrap=True)
+            refresh_settings = gr.Button("🔄 Actualizar")
+
+            def _save_key(name, value):
+                return save_api_key(name, value), "", settings_status(), engines_table()
+
+            def _delete_key(name):
+                return delete_api_key(name), settings_status(), engines_table()
+
+            key_save.click(_save_key, [key_name, key_value],
+                           [key_msg, key_value, keys_md, engines_df])
+            key_delete.click(_delete_key, key_name, [key_msg, keys_md, engines_df])
+            _settings = lambda: (settings_status(), engines_table())  # noqa: E731
+            refresh_settings.click(_settings, None, [keys_md, engines_df])
+            settings_tab.select(_settings, None, [keys_md, engines_df])
 
     app.podcast_config = cfg  # type: ignore[attr-defined]
     return app
