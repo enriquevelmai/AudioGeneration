@@ -1,4 +1,4 @@
-"""scripts/install_integrations.py con ficheros y comandos falsos (no toca la configuración real)."""
+"""scripts/install_integrations.py with fake files and commands (does not touch the real configuration)."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ def test_merge_keeps_other_entries_and_backs_up(ii: Any, tmp_path: Path) -> None
     backup = cfg.with_name(cfg.name + ".bak")
     assert json.loads(backup.read_text(encoding="utf-8")) == original
 
-    # idempotente: sin cambios y sin reescribir
+    # idempotent: no changes and no rewrite
     mtime = cfg.stat().st_mtime_ns
     assert ii.merge_desktop_config(cfg, entry) == "unchanged"
     assert cfg.stat().st_mtime_ns == mtime
@@ -68,7 +68,7 @@ def test_merge_new_file_and_dry_run(ii: Any, tmp_path: Path) -> None:
     assert ii.merge_desktop_config(cfg, _entry(ii), dry_run=True) == "added"
     assert not cfg.exists()
     assert ii.merge_desktop_config(cfg, _entry(ii)) == "added"
-    assert not cfg.with_name(cfg.name + ".bak").exists()  # no había nada que copiar
+    assert not cfg.with_name(cfg.name + ".bak").exists()  # there was nothing to copy
     assert "podcast-tts" in json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"]
 
 
@@ -144,4 +144,4 @@ def test_claude_code_dry_run_runs_nothing(ii: Any, capsys: pytest.CaptureFixture
                            noninteractive=True, claude="claude", runner=fake)
     assert fake.calls == []
     out = capsys.readouterr().out
-    assert "[simulación]" in out and "mcp add --scope user podcast-tts" in out
+    assert "[dry run]" in out and "mcp add --scope user podcast-tts" in out

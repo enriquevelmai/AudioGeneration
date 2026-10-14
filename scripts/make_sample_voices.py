@@ -1,14 +1,14 @@
-"""Genera las voces de ejemplo en ``voices/`` usando speakers integrados de XTTS v2.
+"""Generates the sample voices in ``voices/`` using XTTS v2 built-in speakers.
 
-Para cada voz sintetiza con XTTS un clip de referencia de ~8-11 s con una frase
-natural, lo registra con ``add_voice`` (ref.wav + ref.txt con la transcripción
-exacta + voice.json) y comprueba la duración (F5-TTS recorta las referencias a
-~12 s, así que no deben pasar de ~11.5 s).
+For each voice it synthesizes with XTTS a ~8-11 s reference clip with a natural
+sentence, registers it with ``add_voice`` (ref.wav + ref.txt with the exact
+transcript + voice.json) and checks the duration (F5-TTS trims references to
+~12 s, so they must not exceed ~11.5 s).
 
-Uso:
-    .venv\\Scripts\\python.exe scripts\\make_sample_voices.py              # crea las que falten
-    .venv\\Scripts\\python.exe scripts\\make_sample_voices.py --overwrite  # las regenera todas
-    .venv\\Scripts\\python.exe scripts\\make_sample_voices.py ana emma     # solo esas
+Usage:
+    .venv\\Scripts\\python.exe scripts\\make_sample_voices.py              # creates the missing ones
+    .venv\\Scripts\\python.exe scripts\\make_sample_voices.py --overwrite  # regenerates all of them
+    .venv\\Scripts\\python.exe scripts\\make_sample_voices.py ana emma     # only those
 """
 
 from __future__ import annotations
@@ -38,10 +38,10 @@ class Sample:
     name: str
     lang: str
     engine: str
-    speaker: str  # speaker integrado de XTTS con el que se genera el clip
+    speaker: str  # XTTS built-in speaker used to generate the clip
     text: str
     description: str
-    keep_speaker: bool = False  # guarda xtts_speaker en voice.json
+    keep_speaker: bool = False  # stores xtts_speaker in voice.json
 
 
 SAMPLES: tuple[Sample, ...] = (
@@ -49,13 +49,13 @@ SAMPLES: tuple[Sample, ...] = (
         "ana", "es", "f5", "Alma María",
         "Hola, me llamo Ana y me encanta contar historias. Cada mañana preparo un café, "
         "abro la ventana y pienso en lo que voy a compartir con vosotros.",
-        "Mujer, castellano. Clip generado con el speaker XTTS 'Alma María'.",
+        "Woman, Spanish (Spain). Clip generated with the XTTS speaker 'Alma María'.",
     ),
     Sample(
         "carlos", "es", "f5", "Luis Moray",
         "Buenas tardes, soy Carlos. Llevo años trabajando en la radio y todavía me emociono "
         "cada vez que se enciende la luz roja del estudio.",
-        "Hombre, castellano. Clip generado con el speaker XTTS 'Luis Moray'.",
+        "Man, Spanish (Spain). Clip generated with the XTTS speaker 'Luis Moray'.",
     ),
     Sample(
         "emma", "en", "f5", "Claribel Dervla",
@@ -74,7 +74,7 @@ SAMPLES: tuple[Sample, ...] = (
 
 
 def synth_clip(tts, sample: Sample, out: Path, attempts: int = 4) -> float:
-    """Sintetiza el clip con XTTS hasta que la duración cae en [MIN, MAX]."""
+    """Synthesizes the clip with XTTS until the duration falls within [MIN, MAX]."""
     import torch
 
     sr = tts.synthesizer.output_sample_rate
@@ -86,7 +86,7 @@ def synth_clip(tts, sample: Sample, out: Path, attempts: int = 4) -> float:
                           temperature=0.6, split_sentences=True)
         audio = np.asarray(wav, dtype=np.float32)
         dur = len(audio) / sr
-        print(f"  intento {i + 1}: {dur:.2f} s")
+        print(f"  attempt {i + 1}: {dur:.2f} s")
         if best is None or abs(dur - 9.5) < abs(best[0] - 9.5):
             best = (dur, audio)
         if MIN_SECONDS <= dur <= MAX_SECONDS:
@@ -94,7 +94,7 @@ def synth_clip(tts, sample: Sample, out: Path, attempts: int = 4) -> float:
     assert best is not None
     dur, audio = best
     if not MIN_SECONDS <= dur <= MAX_SECONDS:
-        print(f"  AVISO: duración {dur:.2f} s fuera de [{MIN_SECONDS}, {MAX_SECONDS}]")
+        print(f"  WARNING: duration {dur:.2f} s outside [{MIN_SECONDS}, {MAX_SECONDS}]")
     peak = float(np.max(np.abs(audio))) or 1.0
     audio = audio * min(1.0, 0.9 / peak)
     sf.write(str(out), audio, sr, subtype="PCM_16")
@@ -103,8 +103,8 @@ def synth_clip(tts, sample: Sample, out: Path, attempts: int = 4) -> float:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("names", nargs="*", help="voces a generar (por defecto, todas)")
-    parser.add_argument("--overwrite", action="store_true", help="regenera aunque ya existan")
+    parser.add_argument("names", nargs="*", help="voices to generate (default: all)")
+    parser.add_argument("--overwrite", action="store_true", help="regenerates them even if they already exist")
     parser.add_argument("--voices-dir", type=Path, default=None)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING)
@@ -113,14 +113,14 @@ def main(argv: list[str] | None = None) -> int:
     wanted = [s for s in SAMPLES if not args.names or s.name in args.names]
     todo = [s for s in wanted if args.overwrite or not (voices_dir / s.name / "voice.json").is_file()]
     if not todo:
-        print("Todas las voces de ejemplo ya existen (usa --overwrite para regenerarlas).")
+        print("All sample voices already exist (use --overwrite to regenerate them).")
         return 0
 
     from podcast_tts.engines.xtts import _load_model
 
     t0 = time.perf_counter()
     tts = _load_model()
-    print(f"XTTS cargado en {time.perf_counter() - t0:.1f} s")
+    print(f"XTTS loaded in {time.perf_counter() - t0:.1f} s")
 
     with tempfile.TemporaryDirectory() as tmp:
         for s in todo:

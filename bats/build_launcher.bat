@@ -1,34 +1,34 @@
 @echo off
 REM ====================================================================
-REM  AudioGeneration - Compila launcher.py a AudioGeneration.exe
-REM  (PyInstaller --onefile --windowed, ejecutado con uvx: PyInstaller
-REM  NO entra en las dependencias del proyecto ni en el .venv).
+REM  AudioGeneration - Builds launcher.py into AudioGeneration.exe
+REM  (PyInstaller --onefile --windowed, run with uvx: PyInstaller is
+REM  NOT part of the project dependencies nor of the .venv).
 REM
-REM  Resultado: AudioGeneration.exe en la raiz del repo (no se versiona).
-REM  El exe NO lleva la app dentro (ni torch): busca .venv\ junto a el,
-REM  ofrece instalar/actualizar y lanza "pythonw -m podcast_tts desktop".
-REM  Por eso tiene que vivir en la carpeta del proyecto; para tenerlo a
-REM  mano usa accesos directos (bats\create_shortcuts.bat).
+REM  Result: AudioGeneration.exe in the repo root (not versioned).
+REM  The exe does NOT bundle the app (nor torch): it looks for .venv\ next to it,
+REM  offers to install/update and launches "pythonw -m podcast_tts desktop".
+REM  That is why it has to live in the project folder; to have it at
+REM  hand, use shortcuts (bats\create_shortcuts.bat).
 REM
-REM  Uso:   bats\build_launcher.bat        bats\build_launcher.bat /y   (sin pause)
+REM  Usage: bats\build_launcher.bat        bats\build_launcher.bat /y   (no pause)
 REM ====================================================================
 setlocal EnableExtensions DisableDelayedExpansion
 pushd "%~dp0.." 2>nul || (
-    echo ERROR: no se puede abrir la carpeta del proyecto: "%~dp0.."
-    echo   Si esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    echo ERROR: cannot open the project folder: "%~dp0.."
+    echo   If it is on a network path ^(\\server\folder^), copy it to a local disk.
     if /i not "%~1"=="/y" pause
     exit /b 1
 )
 if not exist "pyproject.toml" (
-    echo ERROR: no se encuentra pyproject.toml en "%CD%".
-    echo   - Si has abierto el zip sin extraerlo, extrae antes todo su contenido
-    echo     ^(clic derecho sobre el zip ^> Extraer todo^) y ejecuta el .bat desde ahi.
-    echo   - Si la carpeta esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    echo ERROR: pyproject.toml not found in "%CD%".
+    echo   - If you opened the zip without extracting it, extract all its contents first
+    echo     ^(right-click the zip ^> Extract All^) and run the .bat from there.
+    echo   - If the folder is on a network path ^(\\server\folder^), copy it to a local disk.
     popd
     if /i not "%~1"=="/y" pause
     exit /b 1
 )
-REM El PYTHONPATH del usuario podria colar modulos ajenos en el exe.
+REM The user's PYTHONPATH could sneak unrelated modules into the exe.
 set "PYTHONPATH="
 set "PYTHONHOME="
 set "NONINTERACTIVE=0"
@@ -40,25 +40,25 @@ set "UV="
 for /f "delims=" %%i in ('where uv 2^>nul') do if not defined UV set "UV=%%i"
 if not defined UV if exist "%USERPROFILE%\.local\bin\uv.exe" set "UV=%USERPROFILE%\.local\bin\uv.exe"
 if not defined UV (
-    echo ERROR: uv no encontrado. Ejecuta primero bats\install.bat
+    echo ERROR: uv not found. Run bats\install.bat first
     goto fail
 )
 if not exist "assets\icon.ico" (
-    echo ERROR: falta assets\icon.ico. Generalo con:
+    echo ERROR: assets\icon.ico is missing. Generate it with:
     echo        uv run --no-project --with pillow python scripts\make_icon.py
     goto fail
 )
 
-REM Si la app esta abierta desde el exe, PyInstaller no puede sobrescribirlo.
+REM If the app is open from the exe, PyInstaller cannot overwrite it.
 if exist "AudioGeneration.exe" (
     del /q "AudioGeneration.exe" >nul 2>nul
     if exist "AudioGeneration.exe" (
-        echo ERROR: AudioGeneration.exe esta en uso. Cierra el lanzador y vuelve a intentarlo.
+        echo ERROR: AudioGeneration.exe is in use. Close the launcher and try again.
         goto fail
     )
 )
 
-echo [1/1] Compilando launcher.py con PyInstaller ^(uvx; la primera vez lo descarga^)...
+echo [1/1] Building launcher.py with PyInstaller ^(uvx; downloads it the first time^)...
 "%UV%" tool run --python 3.11 --from pyinstaller pyinstaller --noconfirm --clean ^
   --onefile --windowed ^
   --name AudioGeneration ^
@@ -68,19 +68,19 @@ echo [1/1] Compilando launcher.py con PyInstaller ^(uvx; la primera vez lo desca
   --specpath "%CD%\build\launcher" ^
   launcher.py
 if errorlevel 1 (
-    echo ERROR compilando el launcher ^(ver arriba^).
+    echo ERROR building the launcher ^(see above^).
     goto fail
 )
 if not exist "AudioGeneration.exe" (
-    echo ERROR: PyInstaller no genero AudioGeneration.exe.
+    echo ERROR: PyInstaller did not produce AudioGeneration.exe.
     goto fail
 )
 
 for %%f in ("AudioGeneration.exe") do set "EXE_SIZE=%%~zf"
 echo.
 echo ====================================================================
-echo  Listo: AudioGeneration.exe ^(%EXE_SIZE% bytes^) en la raiz del repo.
-echo  Accesos directos en el Escritorio y el menu Inicio:
+echo  Done: AudioGeneration.exe ^(%EXE_SIZE% bytes^) in the repo root.
+echo  Shortcuts on the Desktop and in the Start menu:
 echo      bats\create_shortcuts.bat
 echo ====================================================================
 if not "%NONINTERACTIVE%"=="1" pause

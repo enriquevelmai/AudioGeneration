@@ -1,8 +1,8 @@
-"""Smoke test de XTTS v2 (coqui-tts, fork idiap): castellano e ingles con un speaker integrado.
+"""XTTS v2 smoke test (coqui-tts, idiap fork): Spanish and English with a built-in speaker.
 
-Uso:  .venv\Scripts\python.exe scripts\smoke_xtts.py
-Salida: output/smoke_xtts_es.wav, output/smoke_xtts_en.wav (24 kHz mono)
-La primera ejecucion descarga ~1.9 GB a %LOCALAPPDATA%\tts\tts_models--multilingual--multi-dataset--xtts_v2
+Usage:  .venv\Scripts\python.exe scripts\smoke_xtts.py
+Output: output/smoke_xtts_es.wav, output/smoke_xtts_en.wav (24 kHz mono)
+The first run downloads ~1.9 GB to %LOCALAPPDATA%\tts\tts_models--multilingual--multi-dataset--xtts_v2
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import os
 import time
 from pathlib import Path
 
-os.environ.setdefault("COQUI_TOS_AGREED", "1")  # acepta la licencia CPML sin prompt interactivo
+os.environ.setdefault("COQUI_TOS_AGREED", "1")  # accepts the CPML license without an interactive prompt
 
 import torch  # noqa: E402
 from TTS.api import TTS  # noqa: E402
@@ -32,12 +32,12 @@ def main() -> None:
     print("CUDA:", torch.cuda.is_available(), torch.cuda.get_device_name(0) if device == "cuda" else "")
     t0 = time.perf_counter()
     tts = TTS(MODEL, progress_bar=False).to(device)
-    print(f"Carga del modelo: {time.perf_counter() - t0:.1f}s")
+    print(f"Model load: {time.perf_counter() - t0:.1f}s")
     sr = tts.synthesizer.output_sample_rate
     print("Sample rate:", sr)
-    print("Idiomas:", tts.languages)
+    print("Languages:", tts.languages)
     speakers = tts.speakers or []
-    print(f"Speakers integrados ({len(speakers)}):")
+    print(f"Built-in speakers ({len(speakers)}):")
     for s in speakers:
         print("  -", s)
 
@@ -49,7 +49,7 @@ def main() -> None:
         import soundfile as sf
 
         info = sf.info(str(out))
-        print(f"[{lang}] {out.name}: {info.duration:.2f}s de audio en {dt:.2f}s (RTF {dt / info.duration:.3f}), sr={info.samplerate}")
+        print(f"[{lang}] {out.name}: {info.duration:.2f}s of audio in {dt:.2f}s (RTF {dt / info.duration:.3f}), sr={info.samplerate}")
 
 
 if __name__ == "__main__":

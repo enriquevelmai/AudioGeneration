@@ -1,27 +1,27 @@
 @echo off
 REM ====================================================================
-REM  podcast-tts - Abre AudioGeneration como app de escritorio (ventana
-REM  propia con WebView2, sin navegador ni consola).
+REM  podcast-tts - Opens AudioGeneration as a desktop app (its own
+REM  WebView2 window, no browser or console).
 REM
-REM  Si falta pywebview (extra "desktop") abre la UI en el navegador
-REM  (bats\run_web.bat). Si la app ya esta abierta, la trae al frente.
+REM  If pywebview is missing ("desktop" extra) it opens the UI in the browser
+REM  (bats\run_web.bat). If the app is already open, it brings it to the front.
 REM
-REM  Uso:   bats\run.bat              (ventana de escritorio, sin consola)
-REM         bats\run.bat /console     (igual, pero el registro sale en esta consola)
-REM  Argumentos extra se pasan a "podcast_tts desktop" (p.ej. --debug).
+REM  Usage: bats\run.bat              (desktop window, no console)
+REM         bats\run.bat /console     (same, but the log goes to this console)
+REM  Extra arguments are passed to "podcast_tts desktop" (e.g. --debug).
 REM ====================================================================
 setlocal EnableExtensions DisableDelayedExpansion
 pushd "%~dp0.." 2>nul || (
-    echo ERROR: no se puede abrir la carpeta del proyecto: "%~dp0.."
-    echo   Si esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    echo ERROR: cannot open the project folder: "%~dp0.."
+    echo   If it is on a network path ^(\\server\folder^), copy it to a local disk.
     pause
     exit /b 1
 )
 if not exist "pyproject.toml" (
-    echo ERROR: no se encuentra pyproject.toml en "%CD%".
-    echo   - Si has abierto el zip sin extraerlo, extrae antes todo su contenido
-    echo     ^(clic derecho sobre el zip ^> Extraer todo^) y ejecuta el .bat desde ahi.
-    echo   - Si la carpeta esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    echo ERROR: pyproject.toml not found in "%CD%".
+    echo   - If you opened the zip without extracting it, extract all its contents first
+    echo     ^(right-click the zip ^> Extract All^) and run the .bat from there.
+    echo   - If the folder is on a network path ^(\\server\folder^), copy it to a local disk.
     popd
     pause
     exit /b 1
@@ -29,7 +29,7 @@ if not exist "pyproject.toml" (
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
 set "COQUI_TOS_AGREED=1"
-REM Por si el .pth de la instalacion editable no se lee bien (rutas con acentos).
+REM In case the editable install .pth is not read correctly (paths with accents).
 set "PYTHONPATH=%CD%\src"
 
 set "CONSOLE=0"
@@ -39,7 +39,7 @@ if /i "%~1"=="/console" (
 )
 
 if not exist ".venv\Scripts\python.exe" (
-    echo No existe el entorno .venv. Ejecuta primero: bats\install.bat
+    echo The .venv environment does not exist. Run first: bats\install.bat
     popd
     pause
     exit /b 1
@@ -47,8 +47,8 @@ if not exist ".venv\Scripts\python.exe" (
 
 ".venv\Scripts\python.exe" -c "import webview" >nul 2>nul
 if errorlevel 1 (
-    echo AVISO: falta pywebview ^(extra "desktop"^): se abre la UI en el navegador.
-    echo        Para la app de escritorio: bats\update.bat  ^(o bats\install.bat^)
+    echo WARNING: pywebview is missing ^("desktop" extra^): opening the UI in the browser.
+    echo          For the desktop app: bats\update.bat  ^(or bats\install.bat^)
     echo.
     popd
     endlocal
@@ -65,11 +65,11 @@ goto collect
 
 :launch
 if "%CONSOLE%"=="1" (
-    echo Abriendo AudioGeneration ^(registro en esta consola; cierra la ventana de la app para salir^)...
+    echo Opening AudioGeneration ^(log in this console; close the app window to exit^)...
     ".venv\Scripts\python.exe" -m podcast_tts desktop%ARGS%
     if errorlevel 1 (
         echo.
-        echo La app termino con error ^(ver arriba^). Diagnostico: .venv\Scripts\python.exe scripts\check_env.py
+        echo The app exited with an error ^(see above^). Diagnostics: .venv\Scripts\python.exe scripts\check_env.py
         popd
         pause
         exit /b 1

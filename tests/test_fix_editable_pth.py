@@ -1,4 +1,4 @@
-"""Tests de scripts/fix_editable_pth.py (instalación editable en rutas con acentos)."""
+"""Tests for scripts/fix_editable_pth.py (editable install in paths with accents)."""
 
 from __future__ import annotations
 
@@ -26,16 +26,16 @@ def test_rewrites_pth_with_ascii_line_that_finds_src(tmp_path: Path) -> None:
     site.mkdir(parents=True)
     (project / "src").mkdir()
     pth = site / "_editable_impl_podcast_tts.pth"
-    pth.write_bytes(str(project / "src").encode("utf-8"))  # lo que escribe uv (UTF-8)
+    pth.write_bytes(str(project / "src").encode("utf-8"))  # what uv writes (UTF-8)
     other = site / "_virtualenv.pth"
     other.write_text("import _virtualenv", encoding="ascii")
 
     assert fix.fix(site) == 1
     assert pth.read_bytes().decode("ascii") == fix.PTH_LINE
-    assert other.read_text(encoding="ascii") == "import _virtualenv"  # no se toca
-    assert fix.fix(site) == 0  # idempotente
+    assert other.read_text(encoding="ascii") == "import _virtualenv"  # left untouched
+    assert fix.fix(site) == 0  # idempotent
 
-    # La línea se ejecuta como lo haría site.py, con sys.prefix = <proyecto>\.venv
+    # The line is executed the way site.py would, with sys.prefix = <project>\.venv
     code = (
         "import sys; sys.prefix = sys.argv[1]; "
         "exec(open(sys.argv[2], encoding='cp1252').read()); print(sys.path[-1])"

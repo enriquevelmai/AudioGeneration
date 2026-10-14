@@ -1,24 +1,24 @@
 @echo off
 REM ====================================================================
-REM  podcast-tts - Cambia PyTorch de CPU a CUDA (GPU NVIDIA) sin reinstalar
-REM  todo: uv solo sustituye torch/torchaudio (el resto queda igual).
+REM  podcast-tts - Switches PyTorch from CPU to CUDA (NVIDIA GPU) without
+REM  reinstalling everything: uv only replaces torch/torchaudio (the rest stays).
 REM
-REM  Uso:   bats\install_gpu.bat        bats\install_gpu.bat /y  (sin pause)
-REM         bats\install_gpu.bat /force (aunque no se detecte nvidia-smi)
+REM  Usage: bats\install_gpu.bat        bats\install_gpu.bat /y  (no pause)
+REM         bats\install_gpu.bat /force (even if nvidia-smi is not detected)
 REM ====================================================================
 setlocal EnableExtensions DisableDelayedExpansion
-REM El cd va ANTES de habilitar la expansion retardada: con ella, los "!" de la ruta se pierden.
+REM The cd goes BEFORE enabling delayed expansion: with it, any "!" in the path is lost.
 pushd "%~dp0.." 2>nul || (
-    echo ERROR: no se puede abrir la carpeta del proyecto: "%~dp0.."
-    echo   Si esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    echo ERROR: cannot open the project folder: "%~dp0.."
+    echo   If it is on a network path ^(\\server\folder^), copy it to a local disk.
     if /i not "%~1"=="/y" pause
     exit /b 1
 )
 if not exist "pyproject.toml" (
-    echo ERROR: no se encuentra pyproject.toml en "%CD%".
-    echo   - Si has abierto el zip sin extraerlo, extrae antes todo su contenido
-    echo     ^(clic derecho sobre el zip ^> Extraer todo^) y ejecuta el .bat desde ahi.
-    echo   - Si la carpeta esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    echo ERROR: pyproject.toml not found in "%CD%".
+    echo   - If you opened the zip without extracting it, extract all its contents first
+    echo     ^(right-click the zip ^> Extract All^) and run the .bat from there.
+    echo   - If the folder is on a network path ^(\\server\folder^), copy it to a local disk.
     popd
     if /i not "%~1"=="/y" pause
     exit /b 1
@@ -37,25 +37,25 @@ for %%a in (%*) do (
 )
 
 if not exist ".venv\Scripts\python.exe" (
-    echo No existe .venv. Ejecuta primero bats\install.bat ^(ya detecta la GPU^).
+    echo .venv does not exist. Run bats\install.bat first ^(it already detects the GPU^).
     goto fail
 )
 set "UV="
 for /f "delims=" %%i in ('where uv 2^>nul') do if not defined UV set "UV=%%i"
 if not defined UV if exist "%USERPROFILE%\.local\bin\uv.exe" set "UV=%USERPROFILE%\.local\bin\uv.exe"
 if not defined UV (
-    echo ERROR: uv no encontrado. Ejecuta bats\install.bat
+    echo ERROR: uv not found. Run bats\install.bat
     goto fail
 )
 
 REM --------------------------------------------------------------------
-echo [1/3] Comprobando GPU NVIDIA...
+echo [1/3] Checking for an NVIDIA GPU...
 where nvidia-smi >nul 2>nul
 if errorlevel 1 (
     if "%FORCE%"=="1" (
-        echo   nvidia-smi no encontrado; se continua por /force.
+        echo   nvidia-smi not found; continuing because of /force.
     ) else (
-        echo ERROR: no se encuentra nvidia-smi. Instala el driver NVIDIA ^(o usa /force^).
+        echo ERROR: nvidia-smi not found. Install the NVIDIA driver ^(or use /force^).
         goto fail
     )
 ) else (
@@ -65,7 +65,7 @@ if errorlevel 1 (
 REM --------------------------------------------------------------------
 setlocal EnableDelayedExpansion
 echo.
-echo [2/3] Instalando PyTorch CUDA 12.6 ^(sustituye a la variante CPU, ~2.5 GB^)...
+echo [2/3] Installing PyTorch CUDA 12.6 ^(replaces the CPU variant, ~2.5 GB^)...
 set "EXTRAS=local"
 if exist ".venv\podcast-tts-extras.txt" set /p EXTRAS=<".venv\podcast-tts-extras.txt"
 set "NEW_EXTRAS="
@@ -85,7 +85,7 @@ for %%e in (!NEW_EXTRAS!) do set "EXTRA_ARGS=!EXTRA_ARGS! --extra %%e"
 echo   Extras: !NEW_EXTRAS!
 "%UV%" sync --locked --python 3.11 !EXTRA_ARGS!
 if errorlevel 1 (
-    echo ERROR en uv sync. Revisa la salida de arriba.
+    echo ERROR in uv sync. Check the output above.
     goto fail
 )
 > ".venv\podcast-tts-extras.txt" echo !NEW_EXTRAS!
@@ -93,14 +93,14 @@ if errorlevel 1 (
 
 REM --------------------------------------------------------------------
 echo.
-echo [3/3] Verificando...
+echo [3/3] Verifying...
 ".venv\Scripts\python.exe" scripts\check_env.py
 if errorlevel 1 (
-    echo AVISO: check_env.py ha detectado problemas ^(ver arriba^).
+    echo WARNING: check_env.py found problems ^(see above^).
     goto fail
 )
 echo.
-echo  Listo: los motores usaran la GPU. Abre la app con bats\run.bat
+echo  Done: the engines will use the GPU. Open the app with bats\run.bat
 if not "%NONINTERACTIVE%"=="1" pause
 popd
 endlocal & endlocal

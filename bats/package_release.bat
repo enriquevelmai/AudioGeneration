@@ -1,31 +1,31 @@
 @echo off
 REM ====================================================================
-REM  AudioGeneration - Empaqueta el zip de release para Windows.
+REM  AudioGeneration - Packages the Windows release zip.
 REM
-REM  Resultado: dist\AudioGeneration-v<version>-windows.zip con todo dentro
-REM  de una carpeta AudioGeneration\ (al extraerlo no se mezcla con otros ficheros):
-REM    - el codigo versionado en HEAD (git archive solo empaqueta ficheros
-REM      versionados: sin .venv, output, .cache ni .env), y
-REM    - AudioGeneration\AudioGeneration.exe (si falta, se compila con
+REM  Result: dist\AudioGeneration-v<version>-windows.zip with everything inside
+REM  an AudioGeneration\ folder (extracting it does not mix with other files):
+REM    - the code versioned in HEAD (git archive only packages versioned
+REM      files: no .venv, output, .cache or .env), and
+REM    - AudioGeneration\AudioGeneration.exe (if missing, it is built with
 REM      bats\build_launcher.bat).
-REM  La version se lee de pyproject.toml.
+REM  The version is read from pyproject.toml.
 REM
-REM  OJO: git archive empaqueta HEAD; los cambios sin commitear NO entran.
+REM  NOTE: git archive packages HEAD; uncommitted changes are NOT included.
 REM
-REM  Uso:   bats\package_release.bat        bats\package_release.bat /y   (sin pause)
+REM  Usage: bats\package_release.bat        bats\package_release.bat /y   (no pause)
 REM ====================================================================
 setlocal EnableExtensions DisableDelayedExpansion
 pushd "%~dp0.." 2>nul || (
-    echo ERROR: no se puede abrir la carpeta del proyecto: "%~dp0.."
-    echo   Si esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    echo ERROR: cannot open the project folder: "%~dp0.."
+    echo   If it is on a network path ^(\\server\folder^), copy it to a local disk.
     if /i not "%~1"=="/y" pause
     exit /b 1
 )
 if not exist "pyproject.toml" (
-    echo ERROR: no se encuentra pyproject.toml en "%CD%".
-    echo   - Si has abierto el zip sin extraerlo, extrae antes todo su contenido
-    echo     ^(clic derecho sobre el zip ^> Extraer todo^) y ejecuta el .bat desde ahi.
-    echo   - Si la carpeta esta en una ruta de red ^(\\servidor\carpeta^), copiala a un disco local.
+    echo ERROR: pyproject.toml not found in "%CD%".
+    echo   - If you opened the zip without extracting it, extract all its contents first
+    echo     ^(right-click the zip ^> Extract All^) and run the .bat from there.
+    echo   - If the folder is on a network path ^(\\server\folder^), copy it to a local disk.
     popd
     if /i not "%~1"=="/y" pause
     exit /b 1
@@ -37,17 +37,17 @@ if /i "%~1"=="-y" set "NONINTERACTIVE=1"
 
 where git >nul 2>nul
 if errorlevel 1 (
-    echo ERROR: git no esta instalado o no esta en el PATH.
+    echo ERROR: git is not installed or not on the PATH.
     goto fail
 )
 git rev-parse --verify HEAD >nul 2>nul
 if errorlevel 1 (
-    echo ERROR: esta carpeta no es un repositorio git con commits.
+    echo ERROR: this folder is not a git repository with commits.
     goto fail
 )
 
 REM --------------------------------------------------------------------
-REM  Version: primera linea  version = "x.y.z"  de pyproject.toml
+REM  Version: first line  version = "x.y.z"  of pyproject.toml
 set "VERSION="
 for /f "tokens=2 delims==" %%v in ('findstr /r /b /c:"version *=" pyproject.toml') do (
     if not defined VERSION set "VERSION=%%~v"
@@ -55,24 +55,24 @@ for /f "tokens=2 delims==" %%v in ('findstr /r /b /c:"version *=" pyproject.toml
 set "VERSION=%VERSION: =%"
 set "VERSION=%VERSION:"=%"
 if not defined VERSION (
-    echo ERROR: no se pudo leer la version de pyproject.toml.
+    echo ERROR: could not read the version from pyproject.toml.
     goto fail
 )
 set "ZIP=dist\AudioGeneration-v%VERSION%-windows.zip"
-echo Empaquetando AudioGeneration v%VERSION%...
+echo Packaging AudioGeneration v%VERSION%...
 
 git diff --quiet HEAD -- 2>nul
-if errorlevel 1 echo   AVISO: hay cambios sin commitear; el zip solo incluye lo que hay en HEAD.
+if errorlevel 1 echo   WARNING: there are uncommitted changes; the zip only includes what is in HEAD.
 
 REM --------------------------------------------------------------------
 echo.
-echo [1/3] Lanzador AudioGeneration.exe...
+echo [1/3] AudioGeneration.exe launcher...
 if not exist "AudioGeneration.exe" (
-    echo   No existe: se compila con bats\build_launcher.bat
+    echo   Not found: building it with bats\build_launcher.bat
     call "%~dp0build_launcher.bat" /y
     if errorlevel 1 goto fail
 ) else (
-    echo   Se usa el AudioGeneration.exe existente.
+    echo   Using the existing AudioGeneration.exe.
 )
 
 REM --------------------------------------------------------------------
@@ -82,32 +82,32 @@ if not exist "dist" mkdir "dist"
 if exist "%ZIP%" del /q "%ZIP%"
 git archive --format=zip --prefix=AudioGeneration/ -o "%ZIP%" HEAD
 if errorlevel 1 (
-    echo ERROR en git archive.
+    echo ERROR in git archive.
     goto fail
 )
 
 REM --------------------------------------------------------------------
 echo.
-echo [3/3] Anadiendo AudioGeneration.exe al zip y comprobando el contenido...
+echo [3/3] Adding AudioGeneration.exe to the zip and checking its contents...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem;" ^
   "$z=[IO.Compression.ZipFile]::Open((Resolve-Path -LiteralPath '%ZIP%').Path,'Update');" ^
   "try { [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($z,(Resolve-Path -LiteralPath 'AudioGeneration.exe').Path,'AudioGeneration/AudioGeneration.exe','Optimal');" ^
   " $out=@($z.Entries | ? { -not $_.FullName.StartsWith('AudioGeneration/') });" ^
-  " if ($out.Count) { Write-Host ('  ERROR: entradas fuera de AudioGeneration/: ' + ($out.FullName -join ', ')); exit 3 };" ^
+  " if ($out.Count) { Write-Host ('  ERROR: entries outside AudioGeneration/: ' + ($out.FullName -join ', ')); exit 3 };" ^
   " $bad=@($z.Entries | ? { $_.FullName -match '^AudioGeneration/((\.venv|output|\.cache|models|build|dist)/|\.env$)' });" ^
-  " if ($bad.Count) { Write-Host ('  ERROR: entradas que no deberian estar: ' + ($bad.FullName -join ', ')); exit 3 };" ^
-  " Write-Host ('  ' + $z.Entries.Count + ' entradas, todo dentro de AudioGeneration/.') } finally { $z.Dispose() }"
+  " if ($bad.Count) { Write-Host ('  ERROR: entries that should not be there: ' + ($bad.FullName -join ', ')); exit 3 };" ^
+  " Write-Host ('  ' + $z.Entries.Count + ' entries, all inside AudioGeneration/.') } finally { $z.Dispose() }"
 if errorlevel 1 (
-    echo ERROR preparando el zip.
+    echo ERROR preparing the zip.
     goto fail
 )
 
 for %%f in ("%ZIP%") do set "ZIP_SIZE=%%~zf"
 echo.
 echo ====================================================================
-echo  Listo: %ZIP% ^(%ZIP_SIZE% bytes^)
-echo  Subelo como asset de la release v%VERSION% en GitHub.
+echo  Done: %ZIP% ^(%ZIP_SIZE% bytes^)
+echo  Upload it as an asset of the v%VERSION% release on GitHub.
 echo ====================================================================
 if not "%NONINTERACTIVE%"=="1" pause
 popd
