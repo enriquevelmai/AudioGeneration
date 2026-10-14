@@ -83,12 +83,30 @@ def _validate_name(name: str) -> str:
     return name
 
 
+def _quoted_prefix(value: str) -> tuple[str, str] | None:
+    """Si ``value`` empieza por comillas, devuelve ``(contenido, resto)``; si no se cierran, None."""
+    quote = value[0]
+    i = 1
+    while i < len(value):
+        ch = value[i]
+        if quote == '"' and ch == "\\" and i + 1 < len(value):
+            i += 2
+            continue
+        if ch == quote:
+            return value[1:i], value[i + 1:]
+        i += 1
+    return None
+
+
 def _unquote(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-        inner = value[1:-1]
-        if value[0] == '"':
-            inner = inner.replace('\\"', '"').replace("\\\\", "\\")
-        return inner
+    if len(value) >= 2 and value[0] in "\"'":
+        parsed = _quoted_prefix(value)
+        # Tras las comillas solo puede haber espacios y, opcionalmente, un comentario.
+        if parsed is not None and re.fullmatch(r"\s*(#.*)?", parsed[1]):
+            inner = parsed[0]
+            if value[0] == '"':
+                inner = inner.replace('\\"', '"').replace("\\\\", "\\")
+            return inner
     # Comentario al final de línea solo si va precedido de espacio (KEY=valor # comentario)
     return re.split(r"\s+#", value, maxsplit=1)[0].strip()
 
