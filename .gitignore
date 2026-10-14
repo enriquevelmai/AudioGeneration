@@ -10,3 +10,8 @@ models/
 .env
 .env.tmp
 .env.local
+# Lanzador compilado (bats/build_launcher.bat), su log y artefactos de PyInstaller / releases
+AudioGeneration.exe
+launcher.log
+build/
+dist/

@@ -55,10 +55,13 @@ if exist ".venv\podcast-tts-extras.txt" (
     set /p EXTRAS=<".venv\podcast-tts-extras.txt"
 ) else (
     echo   No hay .venv\podcast-tts-extras.txt: se deduce de la GPU.
-    set "EXTRAS=local cpu dev"
+    set "EXTRAS=local cpu desktop dev"
     where nvidia-smi >nul 2>nul
-    if not errorlevel 1 set "EXTRAS=local cuda dev"
+    if not errorlevel 1 set "EXTRAS=local cuda desktop dev"
 )
+REM La app de escritorio (extra desktop) va siempre, tambien en instalaciones anteriores.
+echo !EXTRAS! | findstr /i /c:"desktop" >nul
+if errorlevel 1 set "EXTRAS=!EXTRAS! desktop"
 set "EXTRA_ARGS="
 for %%e in (!EXTRAS!) do set "EXTRA_ARGS=!EXTRA_ARGS! --extra %%e"
 echo   Extras: !EXTRAS!
@@ -82,7 +85,7 @@ if errorlevel 1 (
 
 echo.
 echo ====================================================================
-echo  Actualizado. Para abrir la interfaz:  bats\run.bat
+echo  Actualizado. App de escritorio: bats\run.bat   ^(navegador: bats\run_web.bat^)
 echo ====================================================================
 if not "%NONINTERACTIVE%"=="1" pause
 endlocal

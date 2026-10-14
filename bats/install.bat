@@ -5,7 +5,9 @@ REM
 REM  - Instala uv si falta (instalador oficial de astral, sin admin).
 REM  - Instala Python 3.11 con uv.
 REM  - Detecta GPU NVIDIA (nvidia-smi) y elige torch CUDA o CPU.
+REM  - Instala tambien la app de escritorio (extra desktop: pywebview).
 REM  - Ofrece descargar ya los modelos y, si usas Claude Code, la skill.
+REM  - Ofrece crear accesos directos "AudioGeneration" (Escritorio y menu Inicio).
 REM
 REM  Uso:   bats\install.bat            (interactivo)
 REM         bats\install.bat /y         (sin preguntas ni pause; responde si)
@@ -15,6 +17,7 @@ REM  Variables opcionales:
 REM         PODCAST_TTS_NONINTERACTIVE=1   igual que /y
 REM         PODCAST_TTS_VARIANT=cpu|cuda   fuerza la variante de torch
 REM         PODCAST_TTS_DOWNLOAD_MODELS=0|1, PODCAST_TTS_INSTALL_SKILL=0|1
+REM         PODCAST_TTS_SHORTCUTS=0|1      accesos directos (en modo /y solo si vale 1)
 REM ====================================================================
 setlocal EnableExtensions
 cd /d "%~dp0.."
@@ -42,7 +45,7 @@ echo ====================================================================
 
 REM --------------------------------------------------------------------
 echo.
-echo [1/7] Comprobando uv...
+echo [1/8] Comprobando uv...
 call :find_uv
 if not defined UV (
     echo   uv no encontrado. Instalando uv ^(local, sin admin^)...
@@ -58,7 +61,7 @@ echo   uv: %UV%
 
 REM --------------------------------------------------------------------
 echo.
-echo [2/7] Instalando Python 3.11 ^(gestionado por uv^)...
+echo [2/8] Instalando Python 3.11 ^(gestionado por uv^)...
 "%UV%" python install 3.11
 if errorlevel 1 (
     REM Puede fallar solo el enlace de version menor aunque Python ya este instalado:
@@ -73,7 +76,7 @@ if errorlevel 1 (
 
 REM --------------------------------------------------------------------
 echo.
-echo [3/7] Comprobando GPU NVIDIA...
+echo [3/8] Comprobando GPU NVIDIA...
 if defined VARIANT (
     echo   Variante forzada: %VARIANT%
 ) else (
@@ -91,19 +94,19 @@ if /i "%VARIANT%"=="cuda" (
 
 REM --------------------------------------------------------------------
 echo.
-echo [4/7] Creando .venv e instalando dependencias ^(local + %VARIANT%^)...
+echo [4/8] Creando .venv e instalando dependencias ^(local + %VARIANT% + desktop^)...
 echo   La primera vez descarga varios GB; las siguientes usa la cache de uv.
-"%UV%" sync --locked --python 3.11 --extra local --extra %VARIANT% --extra dev
+"%UV%" sync --locked --python 3.11 --extra local --extra %VARIANT% --extra desktop --extra dev
 if errorlevel 1 (
     echo ERROR en uv sync. Revisa la salida de arriba.
     goto fail
 )
-> ".venv\podcast-tts-extras.txt" echo local %VARIANT% dev
-echo   Extras registrados en .venv\podcast-tts-extras.txt: local %VARIANT% dev
+> ".venv\podcast-tts-extras.txt" echo local %VARIANT% desktop dev
+echo   Extras registrados en .venv\podcast-tts-extras.txt: local %VARIANT% desktop dev
 
 REM --------------------------------------------------------------------
 echo.
-echo [5/7] Comprobando ffmpeg y el entorno...
+echo [5/8] Comprobando ffmpeg y el entorno...
 call :ensure_ffmpeg
 ".venv\Scripts\python.exe" scripts\check_env.py
 if errorlevel 1 (
@@ -113,7 +116,7 @@ if errorlevel 1 (
 
 REM --------------------------------------------------------------------
 echo.
-echo [6/7] Modelos ^(F5-TTS, F5-Spanish, Vocos, XTTS v2: ~4.5 GB^)...
+echo [6/8] Modelos ^(F5-TTS, F5-Spanish, Vocos, XTTS v2: ~4.5 GB^)...
 echo   Se descargan solos la primera vez que se usan; puedes bajarlos ya.
 echo   Licencias: F5 y F5-Spanish CC-BY-NC-4.0, XTTS v2 CPML ^(uso NO comercial^).
 set "DO_MODELS=%PODCAST_TTS_DOWNLOAD_MODELS%"
@@ -127,7 +130,7 @@ if "%DO_MODELS%"=="1" (
 
 REM --------------------------------------------------------------------
 echo.
-echo [7/7] Skill de Claude Code...
+echo [7/8] Skill de Claude Code...
 if not exist "%USERPROFILE%\.claude\" (
     echo   No se encuentra %USERPROFILE%\.claude: Claude Code no parece instalado. Omitido.
     goto skill_done
@@ -146,13 +149,28 @@ if "%DO_SKILL%"=="1" (
 )
 :skill_done
 
+REM --------------------------------------------------------------------
+echo.
+echo [8/8] Accesos directos "AudioGeneration" ^(Escritorio y menu Inicio^)...
+set "DO_SHORTCUTS=%PODCAST_TTS_SHORTCUTS%"
+if not defined DO_SHORTCUTS if "%NONINTERACTIVE%"=="1" set "DO_SHORTCUTS=0"
+if not defined DO_SHORTCUTS call :ask "Crear accesos directos en el Escritorio y en el menu Inicio" DO_SHORTCUTS
+if "%DO_SHORTCUTS%"=="1" (
+    call "%~dp0create_shortcuts.bat" /y
+    if errorlevel 1 echo AVISO: no se pudieron crear los accesos directos ^(ver arriba^).
+) else (
+    echo   Omitido. Mas tarde: bats\create_shortcuts.bat
+)
+
 echo.
 echo ====================================================================
 if defined ENV_PROBLEMS (
     echo  Instalado con avisos: revisa los [FAIL] de check_env.py.
 ) else (
-    echo  Listo. Para abrir la interfaz:   bats\run.bat
+    echo  Listo. App de escritorio:        bats\run.bat
 )
+echo  En el navegador:                 bats\run_web.bat
+echo  Lanzador AudioGeneration.exe:    bats\build_launcher.bat
 echo  Actualizar:                      bats\update.bat
 echo ====================================================================
 if not "%NONINTERACTIVE%"=="1" pause

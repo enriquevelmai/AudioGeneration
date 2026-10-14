@@ -73,6 +73,7 @@ __all__ = [
     "generate_events",
     "generation_license_notice",
     "main",
+    "open_output_folder",
     "output_files",
     "run_generation",
     "save_api_key",
@@ -658,6 +659,34 @@ def clear_cache(cfg: UIConfig) -> str:
     return f"🧹 Caché vaciada: {n} frases ({_mb(size)})."
 
 
+def open_output_folder(cfg: UIConfig, opener: Callable[[str], Any] | None = None) -> str:
+    """Abre la carpeta de salida en el explorador de archivos del equipo donde corre la UI.
+
+    Pensado para la app de escritorio y el uso local (servidor y usuario en el mismo PC).
+    ``opener`` permite sustituir el lanzador en los tests.
+    """
+    folder = cfg.output_dir
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return f"❌ No se pudo crear `{folder}`: {exc}"
+    if opener is None:
+        import os
+        import subprocess
+        import sys
+
+        if sys.platform == "win32":
+            opener = os.startfile  # type: ignore[attr-defined]
+        else:
+            cmd = "open" if sys.platform == "darwin" else "xdg-open"
+            opener = lambda p: subprocess.Popen([cmd, p])  # noqa: E731
+    try:
+        opener(str(folder))
+    except Exception as exc:  # noqa: BLE001 - se informa al usuario
+        return f"❌ No se pudo abrir `{folder}`: {exc}"
+    return f"📂 Abierta la carpeta de salida: `{folder}`"
+
+
 def output_files(cfg: UIConfig) -> list[str]:
     if not cfg.output_dir.is_dir():
         return []
@@ -756,14 +785,72 @@ def _outputs_summary(cfg: UIConfig) -> tuple[str, list[str] | None]:
 # App
 # --------------------------------------------------------------------------- #
 
+APP_NAME = "AudioGeneration"
+APP_TAGLINE = "Podcast TTS Studio"
+ASSETS_DIR = PROJECT_ROOT / "assets"
+ICON_PNG = ASSETS_DIR / "icon.png"
+ICON_ICO = ASSETS_DIR / "icon.ico"
+
 CSS = """
-#script-editor textarea { font-family: ui-monospace, Consolas, monospace; font-size: 14px; }
-#gen-log textarea { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+#script-editor textarea { font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+                          font-size: 14px; }
+#gen-log textarea { font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+                    font-size: 12px; }
+.ag-header { display: flex; align-items: center; gap: 14px; padding: 6px 2px 4px; }
+.ag-header img { width: 52px; height: 52px; border-radius: 14px;
+                 box-shadow: 0 4px 14px rgba(124, 58, 237, .28); }
+.ag-header .ag-title { font-size: 1.65rem; font-weight: 750; line-height: 1.1; margin: 0;
+                       letter-spacing: -.01em;
+                       background: linear-gradient(90deg, #7c3aed, #db2777 60%, #fb7185);
+                       -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ag-header .ag-sub { margin: 3px 0 0; font-size: .92rem; color: var(--body-text-color-subdued); }
+.ag-header .ag-badge { margin-left: auto; align-self: flex-start; font-size: .75rem;
+                       padding: 3px 9px; border-radius: 999px;
+                       border: 1px solid var(--border-color-primary);
+                       color: var(--body-text-color-subdued); white-space: nowrap; }
+.dark .ag-header .ag-title { background: linear-gradient(90deg, #c4b5fd, #f9a8d4 60%, #fda4af);
+                             -webkit-background-clip: text; background-clip: text; }
 """
 
 
 def _theme() -> gr.themes.Base:
-    return gr.themes.Soft(primary_hue="indigo", neutral_hue="slate")
+    """Tema claro/oscuro (sigue la preferencia del sistema) con los colores del icono."""
+    return gr.themes.Soft(
+        primary_hue="violet", secondary_hue="pink", neutral_hue="slate",
+        font=["Segoe UI Variable", "Segoe UI", "system-ui", "sans-serif"],
+        font_mono=["Cascadia Code", "Consolas", "ui-monospace", "monospace"],
+    ).set(
+        button_primary_background_fill="linear-gradient(90deg, *primary_600, *secondary_500)",
+        button_primary_background_fill_hover="linear-gradient(90deg, *primary_500, *secondary_400)",
+        button_primary_background_fill_dark="linear-gradient(90deg, *primary_600, *secondary_600)",
+        button_primary_text_color="white",
+        button_primary_text_color_dark="white",
+    )
+
+
+def _icon_data_uri() -> str:
+    """El icono embebido en base64 (no depende de rutas servidas por Gradio)."""
+    import base64
+
+    try:
+        return "data:image/png;base64," + base64.b64encode(ICON_PNG.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
+
+
+def header_html() -> str:
+    """Cabecera de la app: icono, nombre y versión."""
+    from . import __version__
+
+    uri = _icon_data_uri()
+    img = f'<img src="{uri}" alt="">' if uri else ""
+    return (
+        f'<div class="ag-header">{img}<div>'
+        f'<p class="ag-title">{APP_NAME}</p>'
+        f'<p class="ag-sub">{APP_TAGLINE} · guion Markdown → podcast con voces clonadas en '
+        f'local (F5-TTS / XTTS v2) o en la nube (ElevenLabs, Azure, OpenAI)</p></div>'
+        f'<span class="ag-badge">v{__version__}</span></div>'
+    )
 
 
 def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
@@ -774,10 +861,8 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
     except OSError:
         initial_script = "[voz:ana] Hola y bienvenidos.\n"
 
-    with gr.Blocks(title="Podcast TTS", analytics_enabled=False) as app:
-        gr.Markdown("# 🎙️ Podcast TTS\nGenera podcasts a partir de un guion Markdown "
-                    "con voces clonadas en local (F5-TTS / XTTS v2) o con proveedores en la "
-                    "nube (ElevenLabs, Azure, OpenAI).")
+    with gr.Blocks(title=f"{APP_NAME} — {APP_TAGLINE}", analytics_enabled=False) as app:
+        gr.HTML(header_html())
 
         # ----------------------------------------------------------- Guion
         with gr.Tab("Guion → Podcast"):
@@ -809,6 +894,9 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
                         generate_btn = gr.Button("▶️ Generar", variant="primary")
                     player = gr.Audio(label="Resultado", type="filepath", interactive=False)
                     download = gr.File(label="Descargar", interactive=False)
+                    with gr.Row():
+                        open_out_btn = gr.Button("📂 Abrir carpeta de salida", size="sm")
+                    open_out_msg = gr.Markdown()
                     log = gr.Textbox(label="Log", lines=10, max_lines=20, interactive=False,
                                      elem_id="gen-log")
             report = gr.Markdown()
@@ -830,6 +918,7 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
             generate_btn.click(_generate, [editor, engine, out_name, fmt, bitrate, normalize],
                                [player, download, log], api_name="generar")
             load_file.upload(load_script_file, load_file, editor)
+            open_out_btn.click(lambda: open_output_folder(cfg), None, open_out_msg)
 
             def _save(t, n):
                 path, msg = save_script(t, n, cfg)
@@ -950,7 +1039,9 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
             with gr.Row():
                 refresh_sys = gr.Button("🔄 Actualizar")
                 clear_btn = gr.Button("🧹 Vaciar caché de síntesis")
+                sys_open_out = gr.Button("📂 Abrir carpeta de salida")
             sys_msg = gr.Markdown()
+            sys_open_out.click(lambda: open_output_folder(cfg), None, sys_msg)
             out_count = gr.Markdown()
             out_files = gr.File(label="Ficheros en output/", file_count="multiple",
                                 interactive=False)
@@ -1012,15 +1103,23 @@ def build_app(cfg: UIConfig | None = None) -> gr.Blocks:
 
 
 def launch(app: gr.Blocks, *, host: str = "127.0.0.1", port: int = 7860, share: bool = False,
-           inbrowser: bool = False, cfg: UIConfig | None = None) -> None:
+           inbrowser: bool = False, cfg: UIConfig | None = None,
+           prevent_thread_lock: bool = False, quiet: bool = False) -> Any:
+    """Lanza el servidor Gradio.
+
+    Con ``prevent_thread_lock=True`` vuelve en cuanto el servidor está escuchando (lo usa la
+    app de escritorio, que lo para luego con ``app.close()``).
+    """
     cfg = cfg or getattr(app, "podcast_config", None) or UIConfig()
     for d in (cfg.output_dir, cfg.scripts_dir, cfg.voices_dir):
         d.mkdir(parents=True, exist_ok=True)
-    app.queue(default_concurrency_limit=1).launch(
+    return app.queue(default_concurrency_limit=1).launch(
         server_name=host, server_port=port, share=share, inbrowser=inbrowser,
         allowed_paths=[str(cfg.output_dir), str(cfg.voices_dir), str(cfg.scripts_dir),
                        str(PROJECT_ROOT / "examples")],
         theme=_theme(), css=CSS, footer_links=["gradio"],
+        favicon_path=str(ICON_PNG) if ICON_PNG.is_file() else None,
+        prevent_thread_lock=prevent_thread_lock, quiet=quiet,
     )
 
 

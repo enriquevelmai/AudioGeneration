@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "podcast-tts"
-version = "0.1.0"
+version = "1.0.0"
 description = "Turn Markdown scripts into multi-voice podcasts with local voice cloning (F5-TTS, XTTS v2) or commercial cloud TTS (ElevenLabs, Azure AI Speech, OpenAI)."
 readme = "README.md"
 authors = [{ name = "enriquevelmai" }]
@@ -61,6 +61,8 @@ local = [
 # Variante de torch: mutuamente excluyentes (ver [tool.uv] conflicts y [tool.uv.sources]).
 cuda = ["torch==2.8.*", "torchaudio==2.8.*"]
 cpu = ["torch==2.8.*", "torchaudio==2.8.*"]
+# App de escritorio (`podcast-tts desktop`): ventana nativa con WebView2 en lugar del navegador.
+desktop = ["pywebview>=5"]
 dev = ["pytest"]
 
 [project.urls]
