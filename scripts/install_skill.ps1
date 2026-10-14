@@ -69,7 +69,10 @@ if ($Copy) {
     Write-Host "Skill copiada en $Target (vuelve a ejecutar con -Copy tras cada cambio)."
     Write-Host "Variable de usuario PODCAST_TTS_HOME = $Root (abre una consola nueva para verla)."
 } else {
-    New-Item -ItemType Junction -Path $Target -Target $Source | Out-Null
+    # New-Item resuelve -Target como comodin (los [ ] de la ruta del proyecto fallarian): se
+    # escapa. -Path, en cambio, se usa tal cual.
+    $sourceEscaped = [Management.Automation.WildcardPattern]::Escape($Source)
+    New-Item -ItemType Junction -Path $Target -Target $sourceEscaped | Out-Null
     Write-Host "Junction creada: $Target -> $Source"
 }
 
