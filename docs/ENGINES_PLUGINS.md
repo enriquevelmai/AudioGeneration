@@ -6,8 +6,8 @@ Once installed in the same environment, the engine shows up everywhere:
 
 - `python -m podcast_tts engines` (with its license and status),
 - `generate --engine myengine`, `voices add --engine myengine`,
-- script tags (`[voz:ana engine=myengine]`) and front matter (`engine: myengine`),
-- the engine selectors and the "Ajustes" (settings) table of the Gradio UI.
+- script tags (`[voice:ana engine=myengine]`) and front matter (`engine: myengine`),
+- the engine selectors and the "Settings" table of the Gradio UI.
 
 ## 1. The engine protocol
 
@@ -48,7 +48,7 @@ from podcast_tts.engines import LicenseInfo, COMMERCIAL_DEPENDS
 LicenseInfo(
     name="Apache-2.0",                      # short license name
     url="https://www.apache.org/licenses/LICENSE-2.0",
-    commercial_use=True,                    # True, False or COMMERCIAL_DEPENDS ("depende del plan")
+    commercial_use=True,                    # True, False or COMMERCIAL_DEPENDS (depends on the plan)
     notes="Weights released under Apache-2.0.",
 )
 ```

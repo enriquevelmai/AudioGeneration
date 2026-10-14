@@ -137,14 +137,14 @@ Jobs live in the server process: if the client restarts the server, an unfinishe
 
 ## Example conversation
 
-> **You:** Hazme un podcast de 3 minutos sobre la historia del café.
+> **You:** Make me a 3-minute podcast about the history of coffee.
 >
 > **Assistant:** *(calls `list_voices`, `get_script_format`, writes a ~450-word dialogue between
 > ana and carlos, calls `validate_script` -> valid, estimated 3:05, then `generate_podcast` with
-> `output_name: "historia_del_cafe"`)*
+> `output_name: "history_of_coffee"`)*
 >
-> Listo: `C:\...\AudioGeneration\output\historia_del_cafe.mp3` (3:02, generado en 1 min 20 s).
-> Aviso: F5-TTS es de uso no comercial. ¿Quieres que cambie el tono, la duración o las voces?
+> Done: `C:\...\AudioGeneration\output\history_of_coffee.mp3` (3:02, generated in 1 min 20 s).
+> Note: F5-TTS is for non-commercial use only. Do you want me to change the tone, the length or the voices?
 
 ## Tests
 
