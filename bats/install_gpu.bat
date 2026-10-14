@@ -77,6 +77,8 @@ if errorlevel 1 set "NEW_EXTRAS=local!NEW_EXTRAS!"
 set "NEW_EXTRAS=!NEW_EXTRAS! cuda"
 echo !NEW_EXTRAS! | findstr /i /c:"desktop" >nul
 if errorlevel 1 set "NEW_EXTRAS=!NEW_EXTRAS! desktop"
+echo !NEW_EXTRAS! | findstr /i /c:"mcp" >nul
+if errorlevel 1 set "NEW_EXTRAS=!NEW_EXTRAS! mcp"
 for /f "tokens=*" %%x in ("!NEW_EXTRAS!") do set "NEW_EXTRAS=%%x"
 set "EXTRA_ARGS="
 for %%e in (!NEW_EXTRAS!) do set "EXTRA_ARGS=!EXTRA_ARGS! --extra %%e"

@@ -5,7 +5,8 @@ REM
 REM  - Instala uv si falta (instalador oficial de astral, sin admin).
 REM  - Instala Python 3.11 con uv (si no hay ya uno utilizable).
 REM  - Detecta GPU NVIDIA (nvidia-smi) y elige torch CUDA o CPU.
-REM  - Instala tambien la app de escritorio (extra desktop: pywebview).
+REM  - Instala tambien la app de escritorio (extra desktop: pywebview)
+REM    y el servidor MCP para asistentes de IA (extra mcp).
 REM  - Ofrece descargar ya los modelos y, si usas Claude Code, la skill.
 REM  - Crea accesos directos "AudioGeneration" (Escritorio y menu Inicio).
 REM
@@ -125,9 +126,9 @@ if /i "%VARIANT%"=="cuda" (
 )
 
 REM --------------------------------------------------------------------
-set "EXTRAS=local %VARIANT% desktop"
-if "%WITH_DEV%"=="1" set "EXTRAS=local %VARIANT% desktop dev"
-set "EXTRA_ARGS=--extra local --extra %VARIANT% --extra desktop"
+set "EXTRAS=local %VARIANT% desktop mcp"
+if "%WITH_DEV%"=="1" set "EXTRAS=local %VARIANT% desktop mcp dev"
+set "EXTRA_ARGS=--extra local --extra %VARIANT% --extra desktop --extra mcp"
 if "%WITH_DEV%"=="1" set "EXTRA_ARGS=%EXTRA_ARGS% --extra dev"
 echo.
 echo [4/8] Creando .venv e instalando dependencias ^(%EXTRAS%^)...

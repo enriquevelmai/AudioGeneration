@@ -89,13 +89,15 @@ if exist ".venv\podcast-tts-extras.txt" (
     set /p EXTRAS=<".venv\podcast-tts-extras.txt"
 ) else (
     echo   No hay .venv\podcast-tts-extras.txt: se deduce de la GPU.
-    set "EXTRAS=local cpu desktop"
+    set "EXTRAS=local cpu desktop mcp"
     where nvidia-smi >nul 2>nul
-    if not errorlevel 1 set "EXTRAS=local cuda desktop"
+    if not errorlevel 1 set "EXTRAS=local cuda desktop mcp"
 )
 REM La app de escritorio (extra desktop) va siempre, tambien en instalaciones anteriores.
 echo !EXTRAS! | findstr /i /c:"desktop" >nul
 if errorlevel 1 set "EXTRAS=!EXTRAS! desktop"
+echo !EXTRAS! | findstr /i /c:"mcp" >nul
+if errorlevel 1 set "EXTRAS=!EXTRAS! mcp"
 set "EXTRA_ARGS="
 for %%e in (!EXTRAS!) do set "EXTRA_ARGS=!EXTRA_ARGS! --extra %%e"
 echo   Extras: !EXTRAS!
