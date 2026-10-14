@@ -190,36 +190,81 @@ def _frame_rms_db(x: np.ndarray, sr: int) -> np.ndarray:
     return 20 * np.log10(np.maximum(rms, 1e-10))
 
 
+def _measure_lufs(x: np.ndarray, sr: int) -> float | None:
+    """Sonoridad integrada (LUFS) con pyloudnorm; ``None`` si no está o el audio es muy corto."""
+    try:
+        import pyloudnorm  # type: ignore[import-untyped]
+    except ImportError:
+        return None
+    if x.size < int(0.5 * sr):
+        return None
+    loudness = pyloudnorm.Meter(sr).integrated_loudness(x.astype(np.float64))
+    return float(loudness) if math.isfinite(loudness) else None
+
+
+def _measure_rms_lufs(x: np.ndarray, sr: int) -> float | None:
+    """Aproximación sin pyloudnorm: RMS de las partes activas (>-50 dBFS); voz ≈ LUFS + ~2 dB."""
+    db = _frame_rms_db(x, sr)
+    active = db[db > -50.0]
+    if active.size == 0:
+        return None
+    return float(10 * np.log10(np.mean(10 ** (active / 10)))) + 2.0
+
+
+def _sliding(x: np.ndarray, width: int, op: str) -> np.ndarray:
+    try:
+        from scipy import ndimage  # type: ignore[import-untyped]
+
+        if op == "min":
+            return ndimage.minimum_filter1d(x, width, mode="nearest")
+        return ndimage.uniform_filter1d(x, width, mode="nearest")
+    except ImportError:  # pragma: no cover - scipy viene con las dependencias
+        pad = width // 2
+        padded = np.pad(x, (pad, width - pad - 1), mode="edge")
+        win = np.lib.stride_tricks.sliding_window_view(padded, width)
+        return win.min(axis=1) if op == "min" else win.mean(axis=1)
+
+
+def _limit_peaks(y: np.ndarray, sr: int, limit: float, window_s: float = 0.005) -> np.ndarray:
+    """Limitador de picos suave: solo atenúa alrededor de los picos que superan ``limit``.
+
+    La ganancia se calcula muestra a muestra, se le aplica un filtro de mínimo (ventana de
+    ``window_s``) y luego una media móvil de la misma ventana, de modo que nunca supera la
+    ganancia necesaria en un pico y no hay escalones audibles.
+    """
+    a = np.abs(y)
+    if a.size == 0 or float(a.max()) <= limit:
+        return y
+    gain = np.minimum(1.0, limit / np.maximum(a, 1e-12)).astype(np.float32)
+    width = max(1, int(window_s * sr)) | 1
+    gain = _sliding(_sliding(gain, width, "min"), width, "mean").astype(np.float32)
+    return np.clip(y * gain, -limit, limit).astype(np.float32, copy=False)
+
+
 def normalize_loudness(x: np.ndarray, sr: int, target_lufs: float = -16.0,
                        peak_dbfs: float = -1.0) -> np.ndarray:
     """Normaliza a ``target_lufs`` (pyloudnorm si está instalado; si no, RMS con puerta).
 
-    Después limita el pico a ``peak_dbfs`` con una ganancia global (sin compresión).
+    Los picos se limitan a ``peak_dbfs`` con un limitador suave y se vuelve a medir y
+    corregir la ganancia (hasta 4 pasadas), para que el resultado quede a ±0.5 LU del
+    objetivo aunque la voz tenga picos altos. Antes se bajaba todo el audio para respetar
+    el pico, lo que dejaba los episodios ~1.5 LU por debajo de lo prometido.
     """
     if x.size == 0 or not np.any(x):
         return x
-    gain_db: float | None = None
-    try:
-        import pyloudnorm  # type: ignore[import-untyped]
-
-        if x.size >= int(0.5 * sr):
-            loudness = pyloudnorm.Meter(sr).integrated_loudness(x.astype(np.float64))
-            if math.isfinite(loudness):
-                gain_db = target_lufs - loudness
-    except ImportError:
-        pass
-    if gain_db is None:
-        # Aproximación: RMS de las partes activas (>-50 dBFS); voz ≈ LUFS + ~2 dB.
-        db = _frame_rms_db(x, sr)
-        active = db[db > -50.0]
-        if active.size == 0:
-            return x
-        rms_db = 10 * np.log10(np.mean(10 ** (active / 10)))
-        gain_db = (target_lufs - 2.0) - rms_db
-    y = x * np.float32(10 ** (gain_db / 20))
-    peak = float(np.max(np.abs(y)))
+    measure = _measure_lufs if _measure_lufs(x, sr) is not None else _measure_rms_lufs
     limit = 10 ** (peak_dbfs / 20)
-    if peak > limit:
+    y = x.astype(np.float32, copy=True)
+    for _ in range(4):
+        loudness = measure(y, sr)
+        if loudness is None:
+            break
+        delta = target_lufs - loudness
+        if abs(delta) < 0.1 and float(np.max(np.abs(y))) <= limit + 1e-6:
+            break
+        y = _limit_peaks(y * np.float32(10 ** (delta / 20)), sr, limit)
+    peak = float(np.max(np.abs(y)))
+    if peak > limit:  # salvaguarda: nunca por encima del pico pedido
         y *= np.float32(limit / peak)
     return y.astype(np.float32, copy=False)
 
@@ -600,8 +645,12 @@ def generate(
     progress: ProgressCallback | None = None,
     max_chars: int = 250,
     bitrate: str = "192k",
+    info: dict[str, float] | None = None,
 ) -> Path:
-    """Atajo: parsea ``script_path``, monta y exporta a ``output_path``."""
+    """Atajo: parsea ``script_path``, monta y exporta a ``output_path``.
+
+    Si se pasa ``info`` (dict), se rellena con ``duration`` (segundos de audio).
+    """
     script_path = Path(script_path)
     script = parse_file(script_path, max_chars=max_chars)
     options = options or AssembleOptions()
@@ -609,5 +658,7 @@ def generate(
         options.base_dir = script_path.resolve().parent
     audio = assemble(script, voices_dir=voices_dir, engine_resolver=engine_resolver,
                      options=options, progress=progress)
+    if info is not None:
+        info["duration"] = len(audio) / 1000.0
     tags = {"title": script.meta.title} if script.meta.title else None
     return export_audio(audio, output_path, bitrate=bitrate, tags=tags)

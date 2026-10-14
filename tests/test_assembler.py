@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -228,6 +229,40 @@ def test_normalize_loudness_targets_level() -> None:
     assert np.max(np.abs(y)) > 0.1
 
 
+def test_noisy_third_party_warnings_are_filtered() -> None:
+    import warnings
+
+    from podcast_tts._warnings import silence_noisy_warnings
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        silence_noisy_warnings()
+        warnings.warn("In 2.9, this function's implementation will be changed to use x")
+        warnings.warn("'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'X' instead.",
+                      DeprecationWarning)
+        warnings.warn("este aviso sí se ve")
+    assert [str(w.message) for w in caught] == ["este aviso sí se ve"]
+
+
+def test_normalize_loudness_hits_target_with_peaky_audio() -> None:
+    """Regresión: el limitador de pico dejaba los episodios ~1.5 LU por debajo de -16 LUFS."""
+    pyloudnorm = pytest.importorskip("pyloudnorm")
+    sr = 44100
+    rng = np.random.default_rng(0)
+    t = np.arange(sr * 8) / sr
+    # "Voz" con sílabas y picos esporádicos (factor de cresta alto, como la voz real)
+    x = 0.05 * np.sin(2 * np.pi * 180 * t) * (0.5 + 0.5 * np.sin(2 * np.pi * 3 * t) ** 2)
+    x += 0.01 * rng.standard_normal(t.size)
+    spikes = rng.choice(t.size, 40, replace=False)
+    x[spikes] = 0.9 * np.sign(rng.standard_normal(40))
+    x = x.astype(np.float32)
+    for target in (-16.0, -14.0, -20.0):
+        y = normalize_loudness(x, sr, target, -1.0)
+        assert np.max(np.abs(y)) <= 10 ** (-1 / 20) + 1e-6
+        measured = pyloudnorm.Meter(sr).integrated_loudness(y.astype(np.float64))
+        assert measured == pytest.approx(target, abs=0.5)
+
+
 def test_segments_list_input(tmp_path) -> None:
     audio, sr = render([Speech(voice="a", text="Hola."), Pause(seconds=1.0)],
                        voices_dir=tmp_path, options=opts(tmp_path, target_lufs=None))
@@ -253,6 +288,8 @@ def test_cli_generate_parse_and_voices(tmp_path, tone_factory) -> None:
             "--voices-dir", str(tmp_path / "v"), "--cache-dir", str(tmp_path / "c"))
     assert r.returncode == 0, r.stderr
     assert out.is_file() and "Listo" in r.stderr
+    # Regresión: se distinguen la duración del audio y el tiempo de generación
+    assert re.search(r"duración \d+\.\d s, generado en \d+\.\d s", r.stderr), r.stderr
 
     wav = tone_factory("clip.wav", 5.0)
     vd = str(tmp_path / "v")
